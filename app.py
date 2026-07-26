@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import re
 import socket
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta, timezone
 
 import cv2
@@ -44,9 +45,13 @@ from database.enterprise_models import (
 )
 from database.db import db as _db
 from recognition.encoder import encode_image
+from recognition.face_registration import (
+    register_face_photos, iter_known_embeddings, refresh_recognizer,
+)
 from recognition.recognizer import FaceRecognizer
 from time_management import ensure_default_rules
 from time_management.api import bp as time_mgmt_bp
+from auth import apple_client_secret, bp as auth_bp, oauth
 
 
 # Canonical class list used by the sidebar / filter dropdowns.
@@ -132,6 +137,7 @@ def ensure_schema_compat() -> None:
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS email VARCHAR(120)",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_path VARCHAR(255)",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS encoding JSONB",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS extra_encodings JSONB",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
         # ---- time-management additions (additive, safe defaults) ----
@@ -147,6 +153,7 @@ def ensure_schema_compat() -> None:
         "ALTER TABLE teachers ADD COLUMN IF NOT EXISTS designation VARCHAR(120)",
         "ALTER TABLE teachers ADD COLUMN IF NOT EXISTS photo_path VARCHAR(255)",
         "ALTER TABLE teachers ADD COLUMN IF NOT EXISTS encoding JSONB",
+        "ALTER TABLE teachers ADD COLUMN IF NOT EXISTS extra_encodings JSONB",
         "ALTER TABLE student_attendance ADD COLUMN IF NOT EXISTS working_seconds INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE teacher_attendance ADD COLUMN IF NOT EXISTS working_seconds INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE student_time_rules ADD COLUMN IF NOT EXISTS in_end_time VARCHAR(5) NOT NULL DEFAULT '09:30'",
@@ -165,10 +172,10 @@ def ensure_schema_compat() -> None:
         columns = {table: {c["name"] for c in inspect(_db.engine).get_columns(table)}
                    for table in ("students", "attendance", "unknown_faces", "teachers", "student_attendance", "teacher_attendance", "student_time_rules", "teacher_time_rules")}
         sqlite_columns = {
-            "students": [("class_name", "VARCHAR(80)"), ("section", "VARCHAR(40)"), ("mobile", "VARCHAR(20)"), ("email", "VARCHAR(120)"), ("photo_path", "VARCHAR(255)"), ("encoding", "JSON"), ("is_active", "BOOLEAN NOT NULL DEFAULT 1"), ("created_at", "DATETIME")],
+            "students": [("class_name", "VARCHAR(80)"), ("section", "VARCHAR(40)"), ("mobile", "VARCHAR(20)"), ("email", "VARCHAR(120)"), ("photo_path", "VARCHAR(255)"), ("encoding", "JSON"), ("extra_encodings", "JSON"), ("is_active", "BOOLEAN NOT NULL DEFAULT 1"), ("created_at", "DATETIME")],
             "attendance": [("event_type", "VARCHAR(8) NOT NULL DEFAULT 'in'"), ("session_id", "INTEGER"), ("manual_edit", "BOOLEAN NOT NULL DEFAULT 0"), ("edit_reason", "VARCHAR(255)")],
             "unknown_faces": [("image_path", "VARCHAR(255)"), ("location", "VARCHAR(120)"), ("alerted", "BOOLEAN NOT NULL DEFAULT 0")],
-            "teachers": [("department", "VARCHAR(120)"), ("designation", "VARCHAR(120)"), ("photo_path", "VARCHAR(255)"), ("encoding", "JSON")],
+            "teachers": [("department", "VARCHAR(120)"), ("designation", "VARCHAR(120)"), ("photo_path", "VARCHAR(255)"), ("encoding", "JSON"), ("extra_encodings", "JSON")],
             "student_attendance": [("working_seconds", "INTEGER NOT NULL DEFAULT 0")],
             "teacher_attendance": [("working_seconds", "INTEGER NOT NULL DEFAULT 0")],
             "student_time_rules": [("in_end_time", "VARCHAR(5) NOT NULL DEFAULT '09:30'"), ("out_detection_start", "VARCHAR(5) NOT NULL DEFAULT '16:00'"), ("early_exit_time", "VARCHAR(5) NOT NULL DEFAULT '16:30'"), ("overtime_start", "VARCHAR(5) NOT NULL DEFAULT '17:00'")],
@@ -192,11 +199,27 @@ def ensure_schema_compat() -> None:
     _db.session.commit()
 
 
-def create_app() -> Flask:
+def create_app(config_overrides: Mapping | None = None) -> Flask:
     """Application factory used by both ``python app.py`` and tests."""
     app = Flask(__name__, static_folder="static", template_folder="templates")
     app.config.from_object(Config)
+    # Tests and deployment entry points can override configuration before any
+    # extension is initialised.  In particular, changing SQLALCHEMY_DATABASE_URI
+    # after init_app() does not move Flask-SQLAlchemy to another database.
+    if config_overrides:
+        app.config.update(config_overrides)
+    if not app.config["DEBUG"] and app.config["SECRET_KEY"] == "dev-secret-change-me":
+        raise RuntimeError("FLASK_SECRET must be set when FLASK_DEBUG is disabled.")
     _db.init_app(app)
+    oauth.init_app(app)
+    if app.config.get("GOOGLE_CLIENT_ID") and app.config.get("GOOGLE_CLIENT_SECRET"):
+        oauth.register("google", client_id=app.config["GOOGLE_CLIENT_ID"], client_secret=app.config["GOOGLE_CLIENT_SECRET"], server_metadata_url="https://accounts.google.com/.well-known/openid-configuration", client_kwargs={"scope": "openid email profile", "code_challenge_method": "S256"})
+    if app.config.get("MICROSOFT_CLIENT_ID") and app.config.get("MICROSOFT_CLIENT_SECRET"):
+        tenant = app.config.get("MICROSOFT_TENANT_ID", "common")
+        oauth.register("microsoft", client_id=app.config["MICROSOFT_CLIENT_ID"], client_secret=app.config["MICROSOFT_CLIENT_SECRET"], server_metadata_url=f"https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration", client_kwargs={"scope": "openid email profile", "code_challenge_method": "S256"})
+    if app.config.get("APPLE_CLIENT_ID") and app.config.get("APPLE_TEAM_ID") and app.config.get("APPLE_KEY_ID") and app.config.get("APPLE_PRIVATE_KEY"):
+        with app.app_context():
+            oauth.register("apple", client_id=app.config["APPLE_CLIENT_ID"], client_secret=apple_client_secret(), server_metadata_url="https://appleid.apple.com/.well-known/openid-configuration", client_kwargs={"scope": "name email", "code_challenge_method": "S256"})
 
     os.makedirs(app.config["KNOWN_FACES_DIR"], exist_ok=True)
 
@@ -257,6 +280,7 @@ def create_app() -> Flask:
                 _db.session.rollback()
 
     register_routes(app)
+    app.register_blueprint(auth_bp)
     app.register_blueprint(time_mgmt_bp)
 
     @app.context_processor
@@ -701,23 +725,31 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/api/students/<int:sid>/photo", methods=["POST"])
     def api_student_photo(sid: int):
+        """Register / re-register a student's face from 3 angle photos.
+
+        Accepts either:
+          * ``photo``   -- a single legacy upload (kept for back-compat)
+          * ``front``/``left``/``right`` -- the new 3-angle workflow
+
+        The actual encoding + persistence logic lives in the shared
+        :func:`register_face_photos` helper so the Student and Teacher
+        endpoints behave identically. The first successful encoding is
+        stored on the student record and the recognizer is refreshed.
+        Additional angle encodings are stored as ``extra_encodings``
+        (list) so the front-face slot stays compatible with downstream
+        code that reads ``Student.encoding``.
+        """
         s = Student.query.get_or_404(sid)
-        if "photo" not in request.files:
-            return jsonify({"error": "no file"}), 400
-        f = request.files["photo"]
-        fname = secure_filename(f"{s.roll_no}_{f.filename}")
-        save_path = os.path.join(app.config["KNOWN_FACES_DIR"], fname)
-        f.save(save_path)
-        s.photo_path = f"known_faces/{fname}"
-
-        embedding = encode_image(save_path)
-        if embedding is None:
-            os.remove(save_path)
-            return jsonify({"error": "no face found in image"}), 400
-
-        s.encoding = embedding
+        result = register_face_photos(
+            request.files,
+            person=s,
+            filename_prefix=str(s.roll_no),
+            known_faces_dir=app.config["KNOWN_FACES_DIR"],
+        )
+        if not result.get("ok"):
+            return jsonify({"error": result.get("error", "no file")}), result.get("status", 400)
         _db.session.commit()
-        manager.refresh_known()
+        refresh_recognizer()
         return jsonify(s.to_dict())
 
     # --------------------------------------------------------------- attendance
@@ -1432,20 +1464,181 @@ h1 {{ color: #1d1d1f; }}
         _db.session.commit()
         return jsonify(t.to_dict())
 
-    @app.route("/api/teachers/<int:tid>/photo", methods=["POST"])
-    def api_teacher_photo(tid: int):
-        t = Teacher.query.get_or_404(tid)
-        if "photo" not in request.files: return jsonify({"error": "no file"}), 400
-        f = request.files["photo"]; fname = secure_filename(f"teacher_{t.teacher_id}_{f.filename}")
-        save_path = os.path.join(app.config["KNOWN_FACES_DIR"], fname); f.save(save_path)
-        embedding = encode_image(save_path)
-        if embedding is None:
-            try: os.remove(save_path)
-            except OSError: pass
-            return jsonify({"error": "no face found in image"}), 400
-        t.photo_path, t.encoding = f"known_faces/{fname}", embedding; _db.session.commit(); manager.refresh_known()
-        print(f"[RECOGNITION] teacher enrollment refreshed teacher={t.id}")
+    @app.route("/api/teachers/<path:tid>/photo", methods=["POST"])
+    def api_teacher_photo(tid):
+        """Register / re-register a teacher's face from 3 angle photos.
+
+        Accepts either:
+          * ``photo``   -- a single legacy upload (kept for back-compat)
+          * ``front``/``left``/``right`` -- the new 3-angle workflow
+
+        Uses the shared :func:`register_face_photos` helper so future
+        fixes only need to happen once. Refreshes the recognizer so the
+        next live frame picks up the new embedding without a restart.
+        """
+        tid_str = str(tid).strip()
+        t = _db.session.get(Teacher, int(tid_str)) if tid_str.isdigit() else None
+        if t is None:
+            t = Teacher.query.filter_by(teacher_id=tid_str).first_or_404()
+        result = register_face_photos(
+            request.files,
+            person=t,
+            filename_prefix=str(t.teacher_id),
+            known_faces_dir=app.config["KNOWN_FACES_DIR"],
+        )
+        if not result.get("ok"):
+            return jsonify({"error": result.get("error", "no file")}), result.get("status", 400)
+        _db.session.commit()
+        refresh_recognizer()
+        print(f"[RECOGNITION] teacher enrollment refreshed teacher={t.id} angles={result.get('encodings')}")
         return jsonify(t.to_dict())
+
+    @app.route("/api/teachers/<path:tid>/profile")
+    def api_teacher_profile(tid):
+        """Return the full profile + attendance stats for a teacher.
+
+        The dashboard, profile modal, and unknown-faces assignment flow
+        all read from this endpoint so they always agree. Includes
+        monthly working hours, attendance %, last recognition and the
+        full set of registered face encodings.
+        """
+        from datetime import timedelta as _td
+        tid_str = str(tid).strip()
+        t = _db.session.get(Teacher, int(tid_str)) if tid_str.isdigit() else None
+        if t is None:
+            t = Teacher.query.filter_by(teacher_id=tid_str).first_or_404()
+        today = date.today()
+        month_start = today.replace(day=1)
+        sessions = (
+            TeacherAttendance.query
+            .filter(
+                TeacherAttendance.teacher_id == t.id,
+                TeacherAttendance.attendance_date >= month_start,
+            )
+            .all()
+        )
+        total_minutes = sum((s.working_minutes or 0) for s in sessions)
+        overtime_minutes = sum((s.overtime_minutes or 0) for s in sessions)
+        days_present = sum(1 for s in sessions if s.in_time is not None)
+        days_absent = max(today.day - days_present, 0)
+        days_recorded = len(sessions) or 1
+        attendance_pct = round((days_present / days_recorded) * 100, 1) if days_recorded else 0.0
+
+        # Last recognition = most recent attendance event for this teacher.
+        last_event = (
+            AttendanceEvent.query
+            .join(TeacherAttendance, TeacherAttendance.id == AttendanceEvent.attendance_id)
+            .filter(
+                TeacherAttendance.teacher_id == t.id,
+                AttendanceEvent.attendance_type == "teacher",
+            )
+            .order_by(AttendanceEvent.event_time.desc())
+            .first()
+        )
+        last_recognition = None
+        if last_event is not None:
+            last_recognition = {
+                "event_type": last_event.event_type,
+                "event_time": last_event.event_time.isoformat() if last_event.event_time else None,
+                "confidence": last_event.confidence,
+                "camera": last_event.camera.name if last_event.camera else None,
+            }
+
+        profile = t.to_dict()
+        extras = t.extra_encodings or []
+        profile.update({
+            "face_registered": t.encoding is not None,
+            "recognition_status": "Active & Ready" if t.encoding is not None else "Face Not Registered",
+            "encodings_count": (1 if t.encoding is not None else 0) + len(extras),
+            "angles": (
+                ["front"] +
+                [e.get("angle") for e in extras if isinstance(e, dict) and e.get("angle")]
+            ),
+            "extra_encodings": extras,
+            "assigned_classes_list": [
+                c.strip() for c in (t.assigned_classes or "").split(",") if c.strip()
+            ],
+            # Monthly roll-up
+            "month": {
+                "month_start": month_start.isoformat(),
+                "days_present": days_present,
+                "days_absent": days_absent,
+                "working_minutes": total_minutes,
+                "overtime_minutes": overtime_minutes,
+                "attendance_pct": attendance_pct,
+            },
+            "last_recognition": last_recognition,
+        })
+        return jsonify(profile)
+
+    @app.route("/api/teachers/<int:tid>/attendance")
+    def api_teacher_attendance(tid: int):
+        """Return attendance rows for a single teacher, scoped by date range.
+
+        Mirrors the per-student logic exposed elsewhere in the app. The
+        optional ``start``/``end`` query params default to the current
+        month. The result is sorted by date descending and capped at
+        ``limit`` rows (default 500).
+        """
+        t = Teacher.query.get_or_404(tid)
+        try:
+            limit = max(1, min(int(request.args.get("limit", 500)), 5000))
+        except (TypeError, ValueError):
+            limit = 500
+        d_raw = request.args.get("start")
+        try:
+            start = datetime.strptime(d_raw, "%Y-%m-%d").date() if d_raw else date.today().replace(day=1)
+        except ValueError:
+            return jsonify({"error": "start must be YYYY-MM-DD"}), 400
+        d_raw = request.args.get("end")
+        try:
+            end = datetime.strptime(d_raw, "%Y-%m-%d").date() if d_raw else date.today()
+        except ValueError:
+            return jsonify({"error": "end must be YYYY-MM-DD"}), 400
+        if end < start:
+            return jsonify({"error": "end must be on/after start"}), 400
+
+        rows = (
+            TeacherAttendance.query
+            .filter(
+                TeacherAttendance.teacher_id == tid,
+                TeacherAttendance.attendance_date >= start,
+                TeacherAttendance.attendance_date <= end,
+            )
+            .order_by(TeacherAttendance.attendance_date.desc())
+            .limit(limit)
+            .all()
+        )
+        out = []
+        for row in rows:
+            out.append({
+                "id": row.id,
+                "date": row.attendance_date.isoformat() if row.attendance_date else None,
+                "in_time": row.in_time.isoformat() if row.in_time else None,
+                "out_time": row.out_time.isoformat() if row.out_time else None,
+                "working_minutes": row.working_minutes or 0,
+                "overtime_minutes": row.overtime_minutes or 0,
+                "break_minutes": row.break_minutes or 0,
+                "status": row.status,
+                "is_late": bool(row.is_late),
+                "is_early_exit": bool(row.is_early_exit),
+                "camera": row.camera.name if row.camera else None,
+                "confidence": row.confidence,
+            })
+        return jsonify({
+            "teacher": {
+                "id": t.id,
+                "name": t.name,
+                "teacher_id": t.teacher_id,
+                "department": t.department,
+                "designation": t.designation,
+                "subject": t.subject,
+            },
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "rows": out,
+            "count": len(out),
+        })
 
     # ----------------------------------------------------------- MJPEG stream
     @app.route("/stream/<int:cid>")
@@ -1534,6 +1727,6 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=_resolve_port(),
-        debug=True,
+        debug=app.config["DEBUG"],
         threaded=True,
     )

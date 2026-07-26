@@ -5,6 +5,7 @@ never has to call ``os.getenv`` directly. Values come from ``.env`` (loaded
 via python-dotenv) and fall back to sane development defaults.
 """
 import os
+from datetime import timedelta
 
 from dotenv import load_dotenv
 
@@ -44,7 +45,30 @@ class Config:
     """Flask + SQLAlchemy configuration."""
 
     # --- Flask ---
+    DEBUG = _as_bool(os.getenv("FLASK_DEBUG"), True)
     SECRET_KEY: str = os.getenv("FLASK_SECRET", "dev-secret-change-me")
+    SESSION_COOKIE_NAME = "krishna_payroll_session"
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SECURE = _as_bool(os.getenv("SESSION_COOKIE_SECURE"), not DEBUG)
+    SESSION_COOKIE_SAMESITE = "Lax"
+    PERMANENT_SESSION_LIFETIME = timedelta(days=int(os.getenv("AUTH_REMEMBER_DAYS", "30")))
+    AUTH_SESSION_HOURS = int(os.getenv("AUTH_SESSION_HOURS", "8"))
+    AUTH_REMEMBER_DAYS = int(os.getenv("AUTH_REMEMBER_DAYS", "30"))
+    AUTH_MAX_LOGIN_ATTEMPTS = int(os.getenv("AUTH_MAX_LOGIN_ATTEMPTS", "5"))
+    SMTP_HOST = os.getenv("SMTP_HOST")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+    SMTP_FROM = os.getenv("SMTP_FROM")
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+    MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")
+    MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET")
+    MICROSOFT_TENANT_ID = os.getenv("MICROSOFT_TENANT_ID", "common")
+    APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID")
+    APPLE_TEAM_ID = os.getenv("APPLE_TEAM_ID")
+    APPLE_KEY_ID = os.getenv("APPLE_KEY_ID")
+    APPLE_PRIVATE_KEY = os.getenv("APPLE_PRIVATE_KEY")
 
     # --- Database ---
     SQLALCHEMY_DATABASE_URI: str = _database_uri()

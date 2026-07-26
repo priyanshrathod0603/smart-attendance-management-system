@@ -22,6 +22,7 @@ from .enterprise_models import (  # noqa: F401
     StudentTimeRule, HolidayCalendar, WeeklyOff, AttendanceSetting,
     AttendanceLog, AttendanceCorrection, CameraSession, Notification,
 )
+from .auth_models import User, AuthSession, AuthToken, OAuthIdentity, LoginEvent  # noqa: F401
 
 __all__ = [
     "db",

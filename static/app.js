@@ -15,6 +15,11 @@
   const openFormModal = window.openFormModal;
   const studentStatusBadge = window.studentStatusBadge;
 
+  const set = (id, value) => {
+    const el = $(id);
+    if (el) el.textContent = value ?? "--";
+  };
+
   function cameraMetaHtml(c) {
     return `
       <span class="pill"><i data-lucide="map-pin"></i> ${escapeHtml(c.location || "Campus")}</span>
@@ -71,7 +76,6 @@
         $("#stat-absent").textContent = s.absent_today;
         $("#stat-unknown").textContent = s.unknown_today;
         $("#stat-cams").textContent = s.active_cameras;
-        const set = (id, value) => { const el = $(id); if (el) el.textContent = value ?? 0; };
         set("#stat-teachers-present", s.teachers_present);
         set("#stat-teachers-absent", s.teachers_absent);
         set("#stat-late", s.late_today);
@@ -164,7 +168,7 @@
         if (img && img.requestFullscreen) img.requestFullscreen();
         return;
       }
-      await fetch(`/api/cameras/${id}/${action}`, { method: "POST" });
+      await j(`/api/cameras/${id}/${action}`, { method: "POST" });
       refreshCams();
       refreshStats();
     });
@@ -318,7 +322,7 @@
         openUploadModal(parseInt(id, 10), btn.dataset.name);
       } else if (action === "delete") {
         if (!confirm("Delete this student and their face encoding?")) return;
-        try { await fetch(`/api/students/${id}`, { method: "DELETE" }); load(); }
+        try { await j(`/api/students/${id}`, { method: "DELETE" }); load(); }
         catch (err) { showResult({ title: "Delete failed", ok: false, message: err.message }); }
       } else if (action === "edit") {
         try {
@@ -526,70 +530,203 @@
     const countEl = $("#teachers-count");
     let search = "";
 
+    async function loadStats() {
+      try {
+        const stats = await j("/api/enterprise/dashboard");
+        set("#stat-teacher-total", stats.total_teachers ?? "--");
+        set("#stat-teacher-present", stats.teachers_present ?? "--");
+        set("#stat-teacher-absent", stats.teachers_absent ?? "--");
+      } catch {
+        /* ignore */
+      }
+    }
+
     async function load() {
       const rows = await j("/api/teachers");
+      loadStats();
+      const registeredCount = rows.filter((r) => r.has_encoding || r.encoding != null).length;
+      set("#stat-teacher-registered", registeredCount);
+
       const q = search.toLowerCase();
       const filtered = q
         ? rows.filter((r) =>
             (r.name || "").toLowerCase().includes(q) ||
             (r.teacher_id || "").toLowerCase().includes(q) ||
-            (r.subject || "").toLowerCase().includes(q))
+            (r.subject || "").toLowerCase().includes(q) ||
+            (r.department || "").toLowerCase().includes(q) ||
+            (r.designation || "").toLowerCase().includes(q))
         : rows;
       if (countEl) countEl.textContent = `${filtered.length} teachers`;
       if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty">No teachers yet.</td></tr>`; return;
+        tbody.innerHTML = `<tr><td colspan="8" class="empty">No teachers found.</td></tr>`; return;
       }
-      tbody.innerHTML = filtered.map((t) => `
+      tbody.innerHTML = filtered.map((t) => {
+        const hasFace = t.has_encoding || t.encoding != null;
+        const extraCount = Array.isArray(t.extra_encodings) ? t.extra_encodings.length : 0;
+        const totalAngles = hasFace ? 1 + extraCount : 0;
+        const faceBadge = hasFace
+          ? `<span class="badge ok"><i data-lucide="check-circle"></i> Registered (${totalAngles} ${totalAngles === 1 ? 'angle' : 'angles'})</span>`
+          : `<span class="badge warn"><i data-lucide="alert-circle"></i> No Face</span>`;
+        return `
         <tr>
-          <td>${escapeHtml(t.teacher_id)}</td>
-          <td>${escapeHtml(t.name)}</td>
-          <td>${escapeHtml(t.subject || "")}</td>
-          <td>${escapeHtml(t.assigned_classes || "")}</td>
-          <td>${escapeHtml(t.mobile || "")}</td>
-          <td>${escapeHtml(t.email || "")}</td>
+          <td><strong>${escapeHtml(t.teacher_id)}</strong></td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;">
+              ${t.photo_path ? `<img src="/static/${t.photo_path}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" />` : `<div style="width:32px;height:32px;border-radius:50%;background:var(--primary-subtle,#e0e7ff);display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary);">${escapeHtml((t.name || "T")[0].toUpperCase())}</div>`}
+              <div>
+                <strong>${escapeHtml(t.name)}</strong>
+              </div>
+            </div>
+          </td>
+          <td>${escapeHtml(t.department || "General")} <br/><small class="muted">${escapeHtml(t.designation || "Teacher")}</small></td>
+          <td>${escapeHtml(t.subject || "All Subjects")} <br/><small class="muted">Classes: ${escapeHtml(t.assigned_classes || "N/A")}</small></td>
+          <td>${escapeHtml(t.mobile || "-")} <br/><small class="muted">${escapeHtml(t.email || "-")}</small></td>
+          <td>${faceBadge}</td>
           <td><span class="badge ${t.is_active ? "ok" : "muted"}">${t.is_active ? "Active" : "Inactive"}</span></td>
           <td>
-            <button class="btn-secondary" data-action="edit" data-id="${t.id}"><i data-lucide="edit"></i></button>
-            <button class="btn-danger" data-action="delete" data-id="${t.id}"><i data-lucide="trash-2"></i></button>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              <button class="btn-primary" data-action="upload" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="Register Face / Upload Photo"><i data-lucide="camera"></i> Face</button>
+              <button class="btn-secondary" data-action="profile" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="View Profile"><i data-lucide="user"></i> Profile</button>
+              <button class="btn-secondary" data-action="edit" data-id="${t.id}" title="Edit Teacher"><i data-lucide="edit"></i></button>
+              <button class="btn-danger" data-action="delete" data-id="${t.id}" title="Delete Teacher"><i data-lucide="trash-2"></i></button>
+            </div>
           </td>
-        </tr>`).join("");
+        </tr>`;
+      }).join("");
       if (window.lucide) lucide.createIcons();
     }
 
     let timer;
-    $("#filter-search").addEventListener("input", (e) => {
-      clearTimeout(timer);
-      timer = setTimeout(() => { search = e.target.value; load(); }, 200);
-    });
-
-    $("#btn-add-teacher").addEventListener("click", () => {
-      openFormModal({
-        title: "Add Teacher",
-        fields: [
-          { name: "teacher_id", label: "Teacher ID", required: true },
-          { name: "name", label: "Name", required: true },
-          { name: "subject", label: "Subject" },
-          { name: "assigned_classes", label: "Assigned Classes (e.g. 5A, 6B)" },
-          { name: "mobile", label: "Mobile" },
-          { name: "email", label: "Email", type: "email" },
-        ],
-        onSave: async (v) => {
-          await j("/api/teachers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
-          showResult({ title: "Teacher added", ok: true, message: `${v.name} added.` });
-          load();
-        },
+    const searchEl = $("#filter-search");
+    if (searchEl) {
+      searchEl.addEventListener("input", (e) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { search = e.target.value; load(); }, 200);
       });
-    });
+    }
+
+    const addBtn = $("#btn-add-teacher");
+    if (addBtn) {
+      addBtn.addEventListener("click", () => {
+        openFormModal({
+          title: "Add Teacher",
+          fields: [
+            { name: "teacher_id", label: "Teacher ID", required: true },
+            { name: "name", label: "Name", required: true },
+            { name: "department", label: "Department (e.g. Science, Mathematics)" },
+            { name: "designation", label: "Designation (e.g. Senior Teacher, HOD)" },
+            { name: "subject", label: "Subject" },
+            { name: "assigned_classes", label: "Assigned Classes (e.g. 5A, 6B)" },
+            { name: "mobile", label: "Mobile" },
+            { name: "email", label: "Email", type: "email" },
+          ],
+          onSave: async (v) => {
+            await j("/api/teachers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
+            showResult({ title: "Teacher added", ok: true, message: `${v.name} added.` });
+            load();
+          },
+        });
+      });
+    }
+
+    async function showTeacherProfile(tid, tname) {
+      const modal = $("#teacher-profile-modal");
+      const title = $("#tp-modal-title");
+      const body = $("#tp-modal-body");
+      const regBtn = $("#tp-btn-register");
+
+      if (title) title.textContent = `Teacher Profile \u2014 ${tname}`;
+      if (body) body.innerHTML = `<div class="empty">Loading teacher profile...</div>`;
+      openModal("#teacher-profile-modal");
+
+      try {
+        const prof = await j(`/api/teachers/${tid}/profile`);
+        if (regBtn) {
+          regBtn.onclick = () => {
+            closeModal("#teacher-profile-modal");
+            openUploadModal(prof.id, prof.name, "teacher");
+          };
+        }
+        const m = prof.month || {};
+        const last = prof.last_recognition;
+        const lastRecText = last
+          ? `${last.event_type.toUpperCase()} at ${new Date(last.event_time).toLocaleTimeString()} (${Math.round((last.confidence || 0) * 100)}% conf on ${last.camera || 'Camera'})`
+          : "No recognition recorded yet";
+
+        if (body) {
+          body.innerHTML = `
+            <div style="display:grid;grid-template-columns:120px 1fr;gap:20px;margin-bottom:20px;align-items:center;">
+              <div style="text-align:center;">
+                ${prof.photo_path ? `<img src="/static/${prof.photo_path}" style="width:100px;height:100px;border-radius:12px;object-fit:cover;border:2px solid var(--border);" />` : `<div style="width:100px;height:100px;border-radius:12px;background:var(--primary-subtle,#e0e7ff);display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:bold;color:var(--primary);">${escapeHtml((prof.name || "T")[0].toUpperCase())}</div>`}
+                <div style="margin-top:8px;">
+                  <span class="badge ${prof.face_registered ? "ok" : "warn"}">${prof.recognition_status || (prof.face_registered ? "Registered" : "No Face")}</span>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><span class="muted small">Teacher ID:</span> <br/><strong>${escapeHtml(prof.teacher_id)}</strong></div>
+                <div><span class="muted small">Department:</span> <br/><strong>${escapeHtml(prof.department || "General")}</strong></div>
+                <div><span class="muted small">Designation:</span> <br/><strong>${escapeHtml(prof.designation || "Teacher")}</strong></div>
+                <div><span class="muted small">Subject:</span> <br/><strong>${escapeHtml(prof.subject || "All Subjects")}</strong></div>
+                <div><span class="muted small">Assigned Classes:</span> <br/><strong>${escapeHtml(prof.assigned_classes || "None")}</strong></div>
+                <div><span class="muted small">Contact:</span> <br/><strong>${escapeHtml(prof.mobile || "-")} / ${escapeHtml(prof.email || "-")}</strong></div>
+              </div>
+            </div>
+
+            <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;" />
+
+            <h4 style="margin-bottom:12px;"><i data-lucide="scan-face"></i> Face Registration &amp; Encodings Status</h4>
+            <div style="background:var(--surface,#f8fafc);padding:12px;border-radius:8px;margin-bottom:16px;">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div><span class="muted small">Registration Status:</span> <strong>${prof.face_registered ? "Registered & Active" : "Not Registered"}</strong></div>
+                <div><span class="muted small">Total Encodings:</span> <strong>${prof.encodings_count || 0} angles</strong></div>
+                <div><span class="muted small">Angles Enrolled:</span> <strong>${(prof.angles || []).join(", ") || "None"}</strong></div>
+                <div><span class="muted small">Last Recognition:</span> <strong>${escapeHtml(lastRecText)}</strong></div>
+              </div>
+            </div>
+
+            <h4 style="margin-bottom:12px;"><i data-lucide="calendar"></i> Monthly Attendance Summary</h4>
+            <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;">
+              <div class="stat-card glass" style="padding:10px;text-align:center;">
+                <div class="stat-label">Days Present</div>
+                <div class="stat-value" style="font-size:1.4rem;">${m.days_present ?? 0}</div>
+              </div>
+              <div class="stat-card glass" style="padding:10px;text-align:center;">
+                <div class="stat-label">Working Hours</div>
+                <div class="stat-value" style="font-size:1.4rem;">${Math.floor((m.working_minutes || 0) / 60)}h ${(m.working_minutes || 0) % 60}m</div>
+              </div>
+              <div class="stat-card glass" style="padding:10px;text-align:center;">
+                <div class="stat-label">Overtime</div>
+                <div class="stat-value" style="font-size:1.4rem;">${Math.floor((m.overtime_minutes || 0) / 60)}h ${(m.overtime_minutes || 0) % 60}m</div>
+              </div>
+              <div class="stat-card glass" style="padding:10px;text-align:center;">
+                <div class="stat-label">Attendance %</div>
+                <div class="stat-value" style="font-size:1.4rem;color:var(--success);">${m.attendance_pct ?? 0}%</div>
+              </div>
+            </div>
+          `;
+          if (window.lucide) lucide.createIcons();
+        }
+      } catch (err) {
+        if (body) body.innerHTML = `<div class="empty err">Could not load profile: ${escapeHtml(err.message || err)}</div>`;
+      }
+    }
 
     tbody.addEventListener("click", async (e) => {
       const btn = e.target.closest("button[data-action]");
       if (!btn) return;
       const id = btn.dataset.id;
-      if (btn.dataset.action === "delete") {
-        if (!confirm("Delete this teacher?")) return;
-        await fetch(`/api/teachers/${id}`, { method: "DELETE" });
+      const name = btn.dataset.name || "Teacher";
+      const action = btn.dataset.action;
+
+      if (action === "upload") {
+        openUploadModal(id, name, "teacher");
+      } else if (action === "profile") {
+        showTeacherProfile(id, name);
+      } else if (action === "delete") {
+        if (!confirm(`Delete teacher ${name}?`)) return;
+        await j(`/api/teachers/${id}`, { method: "DELETE" });
         load();
-      } else if (btn.dataset.action === "edit") {
+      } else if (action === "edit") {
         const t = (await j("/api/teachers")).find((r) => r.id == id);
         if (!t) return;
         openFormModal({
@@ -598,6 +735,8 @@
           fields: [
             { name: "teacher_id", label: "Teacher ID", required: true },
             { name: "name", label: "Name", required: true },
+            { name: "department", label: "Department" },
+            { name: "designation", label: "Designation" },
             { name: "subject", label: "Subject" },
             { name: "assigned_classes", label: "Assigned Classes" },
             { name: "mobile", label: "Mobile" },
@@ -611,6 +750,12 @@
             load();
           },
         });
+      }
+    });
+
+    window.addEventListener("face-registered", (e) => {
+      if (e.detail && (e.detail.personType === "teacher" || e.detail.personId)) {
+        load();
       }
     });
 

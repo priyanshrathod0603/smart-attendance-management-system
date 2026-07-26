@@ -4,13 +4,48 @@
   <i data-lucide="presentation"></i><span>Teachers</span>
 {% endblock %}
 {% block content %}
+<section class="stats" id="teachers-stats">
+  <div class="stat-card glass">
+    <div class="stat-icon blue"><i data-lucide="presentation"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Total Teachers</div>
+      <div class="stat-value" id="stat-teacher-total">--</div>
+      <div class="stat-trend">faculty members</div>
+    </div>
+  </div>
+  <div class="stat-card glass">
+    <div class="stat-icon green"><i data-lucide="user-check"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Present Today</div>
+      <div class="stat-value" id="stat-teacher-present">--</div>
+      <div class="stat-trend">on campus</div>
+    </div>
+  </div>
+  <div class="stat-card glass">
+    <div class="stat-icon red"><i data-lucide="user-x"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Absent Today</div>
+      <div class="stat-value" id="stat-teacher-absent">--</div>
+      <div class="stat-trend">calculated</div>
+    </div>
+  </div>
+  <div class="stat-card glass">
+    <div class="stat-icon purple"><i data-lucide="scan-face"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Faces Registered</div>
+      <div class="stat-value" id="stat-teacher-registered">--</div>
+      <div class="stat-trend">recognition ready</div>
+    </div>
+  </div>
+</section>
+
 <section class="card glass filters">
   <div class="filter-row">
     <div class="filter-field grow">
       <label>Search</label>
       <div class="search">
         <i data-lucide="search"></i>
-        <input id="filter-search" type="search" placeholder="Search by name, subject, or ID" />
+        <input id="filter-search" type="search" placeholder="Search by name, subject, department, or ID" />
       </div>
     </div>
     <div class="filter-field">
@@ -33,10 +68,10 @@
         <tr>
           <th>Teacher ID</th>
           <th>Name</th>
-          <th>Subject</th>
-          <th>Assigned Classes</th>
-          <th>Mobile</th>
-          <th>Email</th>
+          <th>Dept &amp; Designation</th>
+          <th>Subject &amp; Classes</th>
+          <th>Contact</th>
+          <th>Face Status</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -47,4 +82,22 @@
     </table>
   </div>
 </section>
+
+<!-- ============== Teacher Profile Modal ============== -->
+<div id="teacher-profile-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3 id="tp-modal-title">Teacher Profile</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <div class="modal-body" id="tp-modal-body">
+      <div class="empty">Loading profile...</div>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn-secondary" data-close="1" type="button">Close</button>
+      <button id="tp-btn-register" class="btn-primary" type="button"><i data-lucide="camera"></i> Register Face</button>
+    </footer>
+  </div>
+</div>
 {% endblock %}

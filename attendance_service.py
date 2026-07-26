@@ -17,6 +17,7 @@ from typing import Optional
 from database.db import db
 from database.enterprise_models import (
     AttendanceEvent,
+    AttendanceLog,
     StudentAttendance,
     StudentTimeRule,
     TeacherAttendance,
@@ -226,6 +227,17 @@ def record_recognition(
             )
         )
         _recompute_out_fields(row, rules, now)
+        db.session.add(
+            AttendanceLog(
+                entity_type=f"{person_type}_attendance",
+                entity_id=row.id,
+                field="in_time",
+                old_value=None,
+                new_value=now.isoformat(),
+                edited_by="system",
+                reason=f"Face recognition match (confidence: {confidence:.3f})",
+            )
+        )
         db.session.commit()
         print(
             f"[ATTENDANCE] inserted {person_type}={person_id} "
@@ -269,6 +281,17 @@ def record_recognition(
             )
         )
         _recompute_out_fields(row, rules, now)
+        db.session.add(
+            AttendanceLog(
+                entity_type=f"{person_type}_attendance",
+                entity_id=row.id,
+                field="out_time",
+                old_value=None,
+                new_value=now.isoformat(),
+                edited_by="system",
+                reason=f"Face recognition match (confidence: {confidence:.3f})",
+            )
+        )
         db.session.commit()
         print(
             f"[ATTENDANCE] updated {person_type}={person_id} "

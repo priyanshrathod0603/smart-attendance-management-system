@@ -1,7 +1,7 @@
 /* =====================================================================
    FaceID School ERP -- common helpers
    - Sidebar collapse, modal helpers, status badge, fetch wrapper
-   - Upload-photo modal logic (file / drag / webcam)
+   - Upload-photo modal logic (file / webcam, 3-step workflow)
    - Per-page renderers are loaded by app.js / *.js after this file
    ===================================================================== */
 (() => {
@@ -21,6 +21,10 @@
   window.escapeHtml = escapeHtml;
 
   async function j(url, opts = {}) {
+    const method = (opts.method || "GET").toUpperCase();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      opts.headers = { ...(opts.headers || {}), "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "" };
+    }
     const res = await fetch(url, opts);
     const text = await res.text();
     let body = null;
@@ -57,6 +61,20 @@
         if (group) group.classList.toggle("open");
       });
     });
+  }
+
+  function initProfileMenu() {
+    const trigger = $(".profile-pill");
+    const menu = $("#profile-menu");
+    if (!trigger || !menu) return;
+    const close = () => { menu.hidden = true; trigger.setAttribute("aria-expanded", "false"); };
+    trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      menu.hidden = !menu.hidden;
+      trigger.setAttribute("aria-expanded", String(!menu.hidden));
+    });
+    document.addEventListener("click", (event) => { if (!event.target.closest(".profile-menu-wrap")) close(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
   }
 
   // ---------------------------------------------------------- modal helpers
@@ -176,13 +194,39 @@
   window.studentStatusBadge = studentStatusBadge;
 
   // ---------------------------------------------------------- upload modal
+  // 3-step workflow: Front -> Left -> Right
+  // The Upload object is reused. It now stores a `photos` map (one file per
+  // step) plus the current step. The legacy `Upload.file` getter is kept for
+  // any external code that still reads it.
+  const STEPS = [
+    { key: "front", label: "Front Face", hint: "Step 1 of 3 \u2014 Capture a clear FRONT-facing face." },
+    { key: "left",  label: "Left Face",  hint: "Step 2 of 3 \u2014 Turn the head slightly to the LEFT." },
+    { key: "right", label: "Right Face", hint: "Step 3 of 3 \u2014 Turn the head slightly to the RIGHT." },
+  ];
+
   const Upload = {
-    studentId: null,
-    studentName: "",
-    file: null,
-    previewUrl: null,
-    stream: null,
+    personId: null,
+    personName: "",
+    personType: "student",
+    step: 0,                       // current step index
+    photos: { front: null, left: null, right: null }, // one File per step
+    previewUrl: null,              // current preview blob URL (for the active step)
+    stream: null,                  // active MediaStream (webcam)
   };
+  // Backwards-compatible aliases for any old code that reads Upload.studentId / Upload.studentName / Upload.file.
+  Object.defineProperty(Upload, "studentId", {
+    get() { return Upload.personId; },
+    set(v) { Upload.personId = v; },
+  });
+  Object.defineProperty(Upload, "studentName", {
+    get() { return Upload.personName; },
+    set(v) { Upload.personName = v; },
+  });
+  Object.defineProperty(Upload, "file", {
+    get() { return Upload.photos[Upload.stepKey()] || null; },
+    set(v) { Upload.photos[Upload.stepKey()] = v; },
+  });
+  Upload.stepKey = function () { return STEPS[Upload.step] ? STEPS[Upload.step].key : "front"; };
   window.Upload = Upload;
 
   function switchTab(name) {
@@ -192,16 +236,80 @@
   }
   window.switchUploadTab = switchTab;
 
-  function openUploadModal(studentId, studentName) {
-    Upload.studentId = studentId;
-    Upload.studentName = studentName || "";
-    Upload.file = null;
-    $("#upload-modal-title").textContent = `Register Face -- ${Upload.studentName}`;
-    setPreview(null);
-    setProgress(0, "Idle");
-    $("#upload-submit").disabled = true;
-    switchTab("file");
+  // Re-renders the single preview, the stepper, the navigation buttons and
+  // the register button. Called any time the workflow state changes.
+  function refreshUploadUI() {
+    const stepper = $("#upload-stepper");
+    if (stepper) {
+      $$(".step", stepper).forEach((el) => {
+        const idx = STEPS.findIndex((s) => s.key === el.dataset.step);
+        el.classList.toggle("active", idx === Upload.step);
+        el.classList.toggle("done", Upload.photos[el.dataset.step] != null && idx !== Upload.step);
+      });
+    }
+
+    const meta = STEPS[Upload.step] || STEPS[0];
+    const hint = $("#upload-step-hint");
+    if (hint) hint.textContent = meta.hint;
+
+    const current = Upload.photos[meta.key];
+    if (current) {
+      setPreview(current._previewUrl || URL.createObjectURL(current));
+      current._previewUrl = current._previewUrl || (Upload.previewUrl || null);
+    } else {
+      setPreview(null);
+    }
+
+    const status = $("#preview-status");
+    if (status) {
+      const cap = STEPS[Upload.step].label;
+      if (current) {
+        status.textContent = `${cap} captured. Click "Retake" to replace it, or "Next" to continue.`;
+      } else {
+        status.textContent = `Awaiting capture for Step ${Upload.step + 1} \u2014 ${cap}.`;
+      }
+    }
+
+    const prev = $("#step-prev");
+    const next = $("#step-next");
+    if (prev) prev.disabled = Upload.step === 0;
+    if (next) {
+      next.disabled = !current;
+      next.textContent = Upload.step === STEPS.length - 1 ? "Finish" : "Next";
+    }
+
+    const submit = $("#upload-submit");
+    if (submit) {
+      submit.disabled = !(Upload.photos.front && Upload.photos.left && Upload.photos.right);
+    }
+  }
+
+  function setStep(idx) {
+    Upload.step = Math.max(0, Math.min(STEPS.length - 1, idx));
+    // Reset webcam UI for the new step so the user can capture fresh.
     stopWebcam();
+    const cap = $("#webcam-capture");
+    const retake = $("#webcam-retake");
+    if (cap) cap.disabled = true;
+    if (retake) retake.hidden = true;
+    const status = $("#upload-status");
+    if (status) { status.textContent = ""; status.classList.remove("ok", "err"); }
+    refreshUploadUI();
+  }
+
+  function openUploadModal(personId, personName, personType = "student") {
+    Upload.personId = personId;
+    Upload.personName = personName || "";
+    Upload.personType = personType || "student";
+    Upload.photos = { front: null, left: null, right: null };
+    Upload.step = 0;
+    const title = $("#upload-modal-title");
+    if (title) {
+      const kindLabel = Upload.personType === "teacher" ? "Teacher" : "Student";
+      title.textContent = `Register Face \u2014 ${Upload.personName} (${kindLabel})`;
+    }
+    switchTab("file");
+    setStep(0);
     openModal("#upload-modal");
   }
   window.openUploadModal = openUploadModal;
@@ -209,36 +317,24 @@
   function closeUploadModal() {
     closeModal("#upload-modal");
     stopWebcam();
-    if (Upload.previewUrl) URL.revokeObjectURL(Upload.previewUrl);
+    // Revoke any object URLs we created.
+    Object.values(Upload.photos).forEach((f) => { if (f && f._previewUrl) URL.revokeObjectURL(f._previewUrl); });
+    Upload.photos = { front: null, left: null, right: null };
     Upload.previewUrl = null;
-    Upload.file = null;
   }
   window.closeUploadModal = closeUploadModal;
 
   function setPreview(url) {
-    if (Upload.previewUrl) URL.revokeObjectURL(Upload.previewUrl);
+    if (Upload.previewUrl && Upload.previewUrl !== url) URL.revokeObjectURL(Upload.previewUrl);
     Upload.previewUrl = url;
     const img = $("#preview-img");
     const empty = $("#preview-empty");
     if (url) {
       img.src = url; img.style.display = "block"; empty.style.display = "none";
-      $("#upload-submit").disabled = false;
     } else {
       img.removeAttribute("src"); img.style.display = "none"; empty.style.display = "flex";
-      $("#upload-submit").disabled = true;
     }
   }
-
-  function setProgress(pct, label, mode = "") {
-    const fill = $("#progress-fill");
-    const text = $("#progress-text");
-    fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-    fill.classList.remove("error", "done");
-    if (mode === "error") fill.classList.add("error");
-    if (mode === "done") fill.classList.add("done");
-    text.textContent = label;
-  }
-  window.setUploadProgress = setProgress;
 
   function acceptFile(file) {
     if (!file) return;
@@ -251,9 +347,14 @@
       showResult({ title: "File too large", ok: false, message: `Image must be smaller than 8 MB (got ${(file.size / 1024 / 1024).toFixed(1)} MB).` });
       return;
     }
-    Upload.file = file;
-    setPreview(URL.createObjectURL(file));
-    setProgress(0, "Ready to upload", "");
+    const key = Upload.stepKey();
+    // Replace only the current step's image; keep the others.
+    if (Upload.photos[key] && Upload.photos[key]._previewUrl) {
+      URL.revokeObjectURL(Upload.photos[key]._previewUrl);
+    }
+    file._previewUrl = URL.createObjectURL(file);
+    Upload.photos[key] = file;
+    refreshUploadUI();
   }
   window.acceptFile = acceptFile;
 
@@ -278,10 +379,8 @@
   function stopWebcam() {
     if (Upload.stream) { Upload.stream.getTracks().forEach((t) => t.stop()); Upload.stream = null; }
     const v = $("#webcam"); if (v) v.srcObject = null;
-    const start = $("#webcam-start"), cap = $("#webcam-capture"), retake = $("#webcam-retake");
+    const start = $("#webcam-start");
     if (start) start.disabled = false;
-    if (cap) cap.disabled = true;
-    if (retake) retake.hidden = true;
   }
   function captureFromWebcam() {
     const v = $("#webcam"), c = $("#snap");
@@ -290,7 +389,7 @@
     c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
     c.toBlob((blob) => {
       if (blob) {
-        const f = new File([blob], "webcam-capture.jpg", { type: "image/jpeg" });
+        const f = new File([blob], `${Upload.stepKey()}-webcam.jpg`, { type: "image/jpeg" });
         acceptFile(f);
       }
     }, "image/jpeg", 0.92);
@@ -298,11 +397,16 @@
     $("#webcam-retake").hidden = false;
     stopWebcam();
   }
+  // Retake replaces ONLY the current step image. Previously captured
+  // images for the other steps are preserved.
   function retake() {
-    setPreview(null);
-    $("#webcam-capture").disabled = false;
-    $("#webcam-retake").hidden = true;
-    startWebcam();
+    const key = Upload.stepKey();
+    if (Upload.photos[key] && Upload.photos[key]._previewUrl) {
+      URL.revokeObjectURL(Upload.photos[key]._previewUrl);
+    }
+    Upload.photos[key] = null;
+    Upload.previewUrl = null;
+    setStep(Upload.step);
   }
 
   function bindUploadModal() {
@@ -313,24 +417,14 @@
     $("#file-input").addEventListener("change", () => {
       const f = $("#file-input").files && $("#file-input").files[0];
       if (f) acceptFile(f);
-    });
-
-    const dz = $("#dropzone");
-    ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => {
-      e.preventDefault(); e.stopPropagation(); dz.classList.add("drag");
-    }));
-    ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => {
-      e.preventDefault(); e.stopPropagation(); dz.classList.remove("drag");
-    }));
-    dz.addEventListener("drop", (e) => {
-      const f = e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) acceptFile(f);
+      // Clear the input so the same file can be re-picked if needed.
+      $("#file-input").value = "";
     });
 
     document.addEventListener("paste", (e) => {
       const upload = $("#upload-modal");
       if (!upload.classList.contains("open")) return;
-      if (!$('.tab-panel[data-panel="drop"]').classList.contains("active")) return;
+      if (!$('.tab-panel[data-panel="file"]').classList.contains("active")) return;
       const items = e.clipboardData && e.clipboardData.items;
       if (!items) return;
       for (const it of items) {
@@ -344,46 +438,91 @@
     $("#webcam-capture").addEventListener("click", captureFromWebcam);
     $("#webcam-retake").addEventListener("click", retake);
 
+    // Step navigation
+    $("#step-prev").addEventListener("click", () => setStep(Upload.step - 1));
+    $("#step-next").addEventListener("click", () => {
+      if (Upload.step < STEPS.length - 1) setStep(Upload.step + 1);
+    });
+
+    // Clicking a stepper chip jumps to that step (for retake convenience)
+    $$("#upload-stepper .step").forEach((el) => {
+      el.addEventListener("click", () => {
+        const idx = STEPS.findIndex((s) => s.key === el.dataset.step);
+        if (idx >= 0) setStep(idx);
+      });
+    });
+
     $("#upload-submit").addEventListener("click", () => {
-      if (!Upload.file || !Upload.studentId) return;
+      if (!Upload.personId) return;
+      const front = Upload.photos.front, left = Upload.photos.left, right = Upload.photos.right;
+      if (!front || !left || !right) {
+        showResult({
+          title: "All 3 Photos Required",
+          ok: false,
+          message: "Please capture front, left, and right face photos before registering.",
+        });
+        return;
+      }
       $("#upload-submit").disabled = true;
-      setProgress(0, "Uploading...", "");
+      $("#step-prev").disabled = true;
+      $("#step-next").disabled = true;
+      const status = $("#upload-status");
+      status.textContent = "Registering face...";
+      status.classList.remove("ok", "err");
 
       const fd = new FormData();
-      fd.append("photo", Upload.file, Upload.file.name || "capture.jpg");
+      fd.append("front", front, front.name || "front.jpg");
+      fd.append("left",  left,  left.name  || "left.jpg");
+      fd.append("right", right, right.name || "right.jpg");
+
+      const endpoint = Upload.personType === "teacher"
+        ? `/api/teachers/${Upload.personId}/photo`
+        : `/api/students/${Upload.personId}/photo`;
 
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", `/api/students/${Upload.studentId}/photo`, true);
+      xhr.open("POST", endpoint, true);
+      xhr.setRequestHeader("X-CSRF-Token", document.querySelector('meta[name="csrf-token"]')?.content || "");
       xhr.upload.onprogress = (e) => {
         if (!e.lengthComputable) return;
         const pct = (e.loaded / e.total) * 100;
-        setProgress(pct, `Uploading... ${pct.toFixed(0)}%`);
+        status.textContent = `Uploading... ${pct.toFixed(0)}%`;
       };
       xhr.onload = () => {
         let body = null;
         try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
         if (xhr.status >= 200 && xhr.status < 300) {
-          setProgress(100, "Face Registered Successfully", "done");
+          status.textContent = "Face Registered Successfully";
+          status.classList.add("ok");
           showResult({ title: "Face Registered Successfully", ok: true,
-            message: `${Upload.studentName}'s face has been encoded and is now ready for live recognition.` });
+            message: `${Upload.personName}'s face has been encoded from 3 angles and is now ready for live recognition.` });
           closeUploadModal();
-          window.dispatchEvent(new CustomEvent("face-registered", { detail: { studentId: Upload.studentId } }));
+          window.dispatchEvent(new CustomEvent("face-registered", {
+            detail: { personId: Upload.personId, studentId: Upload.personId, personType: Upload.personType }
+          }));
         } else {
           const msg = (body && body.error) || `Upload failed (HTTP ${xhr.status}).`;
-          setProgress(100, msg, "error");
+          status.textContent = msg;
+          status.classList.add("err");
           const isNoFace = /no face/i.test(msg);
           showResult({
             title: isNoFace ? "No Face Detected" : "Upload Failed",
             ok: false,
             message: isNoFace
-              ? "We couldn't find a face in this image. Try a clearer front-facing photo with good lighting."
+              ? "We couldn't find a face in one of the images. Retake the affected step with a clearer photo and good lighting."
               : msg,
           });
+          $("#upload-submit").disabled = false;
+          $("#step-prev").disabled = Upload.step === 0;
+          $("#step-next").disabled = !Upload.photos[Upload.stepKey()];
         }
       };
       xhr.onerror = () => {
-        setProgress(100, "Network error", "error");
+        status.textContent = "Network error";
+        status.classList.add("err");
         showResult({ title: "Network Error", ok: false, message: "The request didn't reach the server. Check your connection and try again." });
+        $("#upload-submit").disabled = false;
+        $("#step-prev").disabled = Upload.step === 0;
+        $("#step-next").disabled = !Upload.photos[Upload.stepKey()];
       };
       xhr.send(fd);
     });
@@ -392,6 +531,7 @@
   // ------------------------------------------------------------ bootstrap
   document.addEventListener("DOMContentLoaded", () => {
     initSidebar();
+    initProfileMenu();
     bindUploadModal();
   });
 })();

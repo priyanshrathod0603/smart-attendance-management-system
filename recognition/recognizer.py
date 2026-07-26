@@ -19,9 +19,10 @@ import cv2
 import numpy as np
 
 from database.db import db
-from database.models import Student, Teacher
+from database.models import Student, Teacher, UnknownFace
 
 from .encoder import detect_faces
+from .face_registration import iter_known_embeddings
 
 
 def _utcnow() -> datetime:
@@ -96,32 +97,52 @@ class FaceRecognizer:
 
     # ------------------------------------------------------------------ DB
     def refresh_known_faces(self) -> None:
-        """Reload embeddings + metadata from the database."""
+        """Reload embeddings + metadata from the database.
+
+        Both Students and Teachers are treated identically. Multi-angle
+        encodings (stored in ``extra_encodings``) are loaded for every
+        person, so any registered angle can match. There is no built-in
+        priority between students and teachers -- whichever embedding is
+        closest (above the configured threshold) wins.
+        """
         students = Student.query.filter_by(is_active=True).all()
         teachers = Teacher.query.filter_by(is_active=True).all()
         embeddings: list[np.ndarray] = []
         meta: list[tuple[str, int, str, str]] = []
-        for student in students:
-            if student.encoding:
-                vector = np.asarray(student.encoding, dtype=np.float32).reshape(-1)
-                if vector.size != 512 or not np.isfinite(vector).all():
-                    print(f"[RECOGNITION] skipped student id={student.id}: invalid embedding length={vector.size}; re-enroll this face")
-                    continue
-                embeddings.append(vector)
-                meta.append(("student", student.id, student.name, student.roll_no))
-        for teacher in teachers:
-            if teacher.encoding:
-                vector = np.asarray(teacher.encoding, dtype=np.float32).reshape(-1)
-                if vector.size != 512 or not np.isfinite(vector).all():
-                    print(f"[RECOGNITION] skipped teacher id={teacher.id}: invalid embedding length={vector.size}; re-enroll this face")
-                    continue
-                embeddings.append(vector)
-                meta.append(("teacher", teacher.id, teacher.name, teacher.teacher_id))
+        student_count = 0
+        teacher_count = 0
+        for person_kind, persons, code_attr in (
+            ("student", students, "roll_no"),
+            ("teacher", teachers, "teacher_id"),
+        ):
+            for person in persons:
+                for _angle, emb, _path in iter_known_embeddings(person):
+                    vector = np.asarray(emb, dtype=np.float32).reshape(-1)
+                    if vector.size != 512 or not np.isfinite(vector).all():
+                        print(
+                            f"[RECOGNITION] skipped {person_kind} id={person.id}: "
+                            f"invalid embedding length={vector.size}; re-enroll this face"
+                        )
+                        continue
+                    embeddings.append(vector)
+                    meta.append((
+                        person_kind,
+                        person.id,
+                        person.name,
+                        getattr(person, code_attr),
+                    ))
+                    if person_kind == "student":
+                        student_count += 1
+                    else:
+                        teacher_count += 1
 
         with self.lock:
             self._known_embeddings = embeddings
             self._known_meta = meta
-        print(f"[RECOGNITION] known faces loaded: students={sum(item[0] == 'student' for item in meta)} teachers={sum(item[0] == 'teacher' for item in meta)}")
+        print(
+            f"[RECOGNITION] known faces loaded: "
+            f"students={student_count} teachers={teacher_count} total={len(meta)}"
+        )
 
     def _mark_attendance(self, person_type: str, person_id: int, similarity: float) -> None:
         """Write live recognition only to enterprise attendance tables."""
@@ -138,6 +159,47 @@ class FaceRecognizer:
         except Exception as exc:
             db.session.rollback()
             print(f"[ATTENDANCE] failure {person_type}={person_id}: {type(exc).__name__}: {exc}")
+
+    def _record_unknown_face(self, frame: np.ndarray, box: list[int] | tuple[int, ...], confidence: float) -> None:
+        """Save snapshot and database row for an unrecognized face (with 10s cooldown)."""
+        now = _utcnow()
+        last = getattr(self, "_last_unknown_time", None)
+        if last and (now - last).total_seconds() < 10:
+            return
+        self._last_unknown_time = now
+        try:
+            top, right, bottom, left = [int(v) for v in box]
+            h, w = frame.shape[:2]
+            pad = 20
+            crop_top = max(0, top - pad)
+            crop_bottom = min(h, bottom + pad)
+            crop_left = max(0, left - pad)
+            crop_right = min(w, right + pad)
+            crop = frame[crop_top:crop_bottom, crop_left:crop_right]
+            if crop.size == 0:
+                crop = frame
+
+            fname = f"unknown_{int(now.timestamp())}_{int(confidence * 100)}.jpg"
+            known_faces_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "known_faces")
+            os.makedirs(known_faces_dir, exist_ok=True)
+            save_path = os.path.join(known_faces_dir, fname)
+            cv2.imwrite(save_path, crop)
+            rel_path = f"known_faces/{fname}"
+
+            unknown_row = UnknownFace(
+                camera_id=self.camera_id,
+                timestamp=now,
+                confidence=confidence,
+                snapshot_path=rel_path,
+                image_path=rel_path,
+                alerted=False,
+            )
+            db.session.add(unknown_row)
+            db.session.commit()
+            print(f"[RECOGNITION] saved unknown face snapshot={rel_path} confidence={confidence:.3f}")
+        except Exception as exc:
+            db.session.rollback()
+            print(f"[RECOGNITION] failed to save unknown face: {type(exc).__name__}: {exc}")
 
     # -------------------------------------------------------------- per frame
     def _process_frame(self, frame: np.ndarray) -> list[dict]:
@@ -167,9 +229,12 @@ class FaceRecognizer:
                     print(f"[RECOGNITION] matched {person_type} id={person_id} name={name} confidence={similarity:.3f}")
                     self._mark_attendance(person_type, person_id, similarity)
                 else:
-                    print(f"[RECOGNITION] face rejected: confidence={float(sims[best]):.3f} threshold={self.threshold:.3f}")
+                    similarity = float(sims[best])
+                    print(f"[RECOGNITION] face rejected: confidence={similarity:.3f} threshold={self.threshold:.3f}")
+                    self._record_unknown_face(frame, (top, right, bottom, left), similarity)
             else:
                 print("[RECOGNITION] face rejected: no enrolled student or teacher encodings")
+                self._record_unknown_face(frame, (top, right, bottom, left), 0.0)
 
             detections.append(
                 {

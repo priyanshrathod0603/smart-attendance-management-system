@@ -45,6 +45,11 @@ class Student(db.Model):
     # SQLite cannot compile PostgreSQL's JSONB. Use portable JSON locally and
     # retain JSONB when a PostgreSQL database is selected.
     encoding = db.Column(JSON().with_variant(JSONB, "postgresql"))
+    # Optional list of additional angle encodings captured during the
+    # 3-step face registration flow. Each entry is ``{"angle": "left",
+    # "encoding": [...], "photo_path": "known_faces/..."}``. The column
+    # is nullable so existing rows stay valid without a migration.
+    extra_encodings = db.Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(
         db.DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -164,6 +169,12 @@ class Teacher(db.Model):
     email = db.Column(db.String(120))
     photo_path = db.Column(db.String(255))
     encoding = db.Column(JSON().with_variant(JSONB, "postgresql"))
+    # Optional list of additional angle encodings captured during the
+    # 3-step face registration flow. Each entry is a dict with
+    # ``angle``, ``encoding`` and ``photo_path`` keys. Mirrors the
+    # Student.extra_encodings column so the Teacher module behaves
+    # identically to the Student module.
+    extra_encodings = db.Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(
         db.DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -182,7 +193,9 @@ class Teacher(db.Model):
             "email": self.email,
             "photo_path": self.photo_path,
             "has_encoding": self.encoding is not None,
+            "extra_encodings": self.extra_encodings or [],
             "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 

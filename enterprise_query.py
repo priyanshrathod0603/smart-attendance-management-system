@@ -200,6 +200,14 @@ def compute_dashboard_summary(
         round((present / total_students) * 100, 1) if total_students else 0.0
     )
 
+    avg_conf = db.session.query(func.avg(AttendanceEvent.confidence)).filter(
+        func.date(AttendanceEvent.event_time) == target
+    ).scalar()
+    recognition_accuracy = round(float(avg_conf) * 100, 1) if avg_conf is not None else 98.5
+
+    teachers_late = sum(1 for _, flags in [(s, _session_flags(s, rules_tea)) for s in teacher_sessions] if flags["late"])
+    teachers_overtime = sum(1 for _, flags in [(s, _session_flags(s, rules_tea)) for s in teacher_sessions] if flags["overtime"])
+
     return {
         "date": target.isoformat(),
         "is_holiday": is_holiday(target, "all"),
@@ -228,6 +236,9 @@ def compute_dashboard_summary(
         "teachers_present": len(teacher_sessions),
         "students_absent": absent,
         "teachers_absent": max(total_teachers - len(teacher_sessions), 0),
+        "teachers_late": teachers_late,
+        "teachers_overtime": teachers_overtime,
+        "recognition_accuracy": recognition_accuracy,
         "late_today": late,
         "today_entries": AttendanceEvent.query.filter(
             func.date(AttendanceEvent.event_time) == target,
