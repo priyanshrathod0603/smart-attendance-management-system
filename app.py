@@ -304,6 +304,14 @@ def register_routes(app: Flask) -> None:
 
     # ---------------------------------------------------------------- PAGES
     @app.route("/")
+    def page_landing():
+        return render_template("landing/index.html")
+
+    @app.route("/landing")
+    def page_landing_alias():
+        return render_template("landing/index.html")
+
+    @app.route("/dashboard")
     def page_dashboard():
         return render_template(
             "dashboard.html",
