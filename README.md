@@ -123,6 +123,10 @@ The application starts with SQLite by default (`krishna_erp.db`) and can use Pos
 ### 👤 Unknown Faces & AI Assistant
 
 - Stores an `unknown_faces` model and exposes review/action APIs for unknown-face records.
+- **Embedding-based deduplication**: The live recognizer now prevents duplicate unknown-face records for the same continuously visible person. When an unknown face is detected, its 512-d InsightFace embedding is cached per camera with a 30-second cooldown. Subsequent detections of the same person (cosine similarity ≥ 0.7) within the cooldown window do not create new database rows or image files.
+- Multiple unknown people in the same frame are handled independently via their embeddings.
+- Multiple cameras maintain independent deduplication caches.
+- After the cooldown expires, a reappearing unknown person can generate a new event.
 - Unknown-face review actions are audited in `attendance_logs`.
 - Includes an offline rule-based chat assistant for common attendance questions.
 - Optionally falls back to a local Ollama model for unrecognized questions when enabled.

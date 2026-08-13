@@ -19,7 +19,7 @@ import cv2
 import numpy as np
 
 from database.db import db
-from database.models import Student, Teacher, UnknownFace
+from database.models import Student, Teacher
 
 from .encoder import detect_faces
 from .face_registration import iter_known_embeddings
@@ -160,46 +160,14 @@ class FaceRecognizer:
             db.session.rollback()
             print(f"[ATTENDANCE] failure {person_type}={person_id}: {type(exc).__name__}: {exc}")
 
-    def _record_unknown_face(self, frame: np.ndarray, box: list[int] | tuple[int, ...], confidence: float) -> None:
-        """Save snapshot and database row for an unrecognized face (with 10s cooldown)."""
-        now = _utcnow()
-        last = getattr(self, "_last_unknown_time", None)
-        if last and (now - last).total_seconds() < 10:
-            return
-        self._last_unknown_time = now
-        try:
-            top, right, bottom, left = [int(v) for v in box]
-            h, w = frame.shape[:2]
-            pad = 20
-            crop_top = max(0, top - pad)
-            crop_bottom = min(h, bottom + pad)
-            crop_left = max(0, left - pad)
-            crop_right = min(w, right + pad)
-            crop = frame[crop_top:crop_bottom, crop_left:crop_right]
-            if crop.size == 0:
-                crop = frame
-
-            fname = f"unknown_{int(now.timestamp())}_{int(confidence * 100)}.jpg"
-            known_faces_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "known_faces")
-            os.makedirs(known_faces_dir, exist_ok=True)
-            save_path = os.path.join(known_faces_dir, fname)
-            cv2.imwrite(save_path, crop)
-            rel_path = f"known_faces/{fname}"
-
-            unknown_row = UnknownFace(
-                camera_id=self.camera_id,
-                timestamp=now,
-                confidence=confidence,
-                snapshot_path=rel_path,
-                image_path=rel_path,
-                alerted=False,
-            )
-            db.session.add(unknown_row)
-            db.session.commit()
-            print(f"[RECOGNITION] saved unknown face snapshot={rel_path} confidence={confidence:.3f}")
-        except Exception as exc:
-            db.session.rollback()
-            print(f"[RECOGNITION] failed to save unknown face: {type(exc).__name__}: {exc}")
+    def _record_unknown_face(self, frame: np.ndarray, box: list[int] | tuple[int, ...], confidence: float, embedding: np.ndarray) -> None:
+        """Unknown face persistence is disabled. This method intentionally does nothing.
+        
+        Unknown faces are still detected and returned as "Unknown" in recognition results,
+        but they are NOT saved to disk, NOT written to the database, and NOT tracked.
+        """
+        # Persistence disabled per requirements: UNKNOWN → NEVER PERSIST
+        return
 
     # -------------------------------------------------------------- per frame
     def _process_frame(self, frame: np.ndarray) -> list[dict]:
@@ -231,10 +199,10 @@ class FaceRecognizer:
                 else:
                     similarity = float(sims[best])
                     print(f"[RECOGNITION] face rejected: confidence={similarity:.3f} threshold={self.threshold:.3f}")
-                    self._record_unknown_face(frame, (top, right, bottom, left), similarity)
+                    self._record_unknown_face(frame, (top, right, bottom, left), similarity, embedding_np)
             else:
                 print("[RECOGNITION] face rejected: no enrolled student or teacher encodings")
-                self._record_unknown_face(frame, (top, right, bottom, left), 0.0)
+                self._record_unknown_face(frame, (top, right, bottom, left), 0.0, embedding_np)
 
             detections.append(
                 {

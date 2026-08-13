@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Face Recognition Data
+known_faces/
+
+# Auth / sensitive data
+auth/
+
+# Logs
+*.log
