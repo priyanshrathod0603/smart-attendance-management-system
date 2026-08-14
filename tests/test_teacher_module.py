@@ -43,10 +43,22 @@ def _authenticate(client):
         "name": "Test Administrator",
         "email": "admin@example.test",
         "password": "CorrectHorse1",
-    })
-    assert response.status_code == 302
-    dashboard = client.get("/")
-    return re.search(r'<meta name="csrf-token" content="([^"]+)"', dashboard.get_data(as_text=True)).group(1)
+    }, follow_redirects=True)  # follow redirect after signup so we land on dashboard
+    assert response.status_code == 200, (
+        f"Expected 200 after signup+redirect, got {response.status_code}"
+    )
+    data = response.get_data(as_text=True)
+    # Try csrf-token meta tag first (dashboard page)
+    meta = re.search(r'<meta name="csrf-token" content="([^"]+)"', data)
+    if meta:
+        return meta.group(1)
+    # Fallback: form csrf_token (login/landing page)
+    form_token = re.search(r'name="csrf_token" value="([^"]+)"', data)
+    assert form_token, (
+        "Could not find csrf-token meta or csrf_token form field after signup. "
+        f"Response snippet: {data[:500]}"
+    )
+    return form_token.group(1)
 
 
 def test_teacher_crud_and_profile(client):

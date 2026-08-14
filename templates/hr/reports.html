@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+{% block title %}HR & Payroll Reports - Krishna ERP{% endblock %}
+{% block crumbs %}
+  <i data-lucide="briefcase"></i><span>HR Management</span> <i data-lucide="chevron-right"></i> <span>Reports</span>
+{% endblock %}
+
+{% block content %}
+<!-- Reports Header Tabs -->
+<div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--glass-border); margin-bottom: 20px; overflow-x: auto; padding-bottom: 8px;">
+  <button class="btn-secondary tab-btn active" data-tab="tab-rep-leave"><i data-lucide="user-minus"></i> Leave Requests Report</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-rep-overtime"><i data-lucide="clock"></i> Overtime Report</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-rep-reimb"><i data-lucide="receipt"></i> Reimbursements Report</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-rep-audit"><i data-lucide="shield"></i> HR Audit Trail</button>
+</div>
+
+<!-- 1. LEAVE REPORT -->
+<div id="tab-rep-leave" class="tab-panel active">
+  <section class="card glass filters" style="margin-bottom: 16px;">
+    <div class="filter-row">
+      <div class="filter-field">
+        <label>Filter Status</label>
+        <select id="filter-leave-status">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section class="card glass">
+    <div class="card-head"><h2>Leave Requests Report</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Type</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Total Days</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rep-leave-tbody">
+          <tr><td colspan="8" class="empty">Loading leave report...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<!-- 2. OVERTIME REPORT -->
+<div id="tab-rep-overtime" class="tab-panel" style="display:none;">
+  <section class="card glass filters" style="margin-bottom: 16px;">
+    <div class="filter-row">
+      <div class="filter-field">
+        <label>Filter Status</label>
+        <select id="filter-ot-status">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section class="card glass">
+    <div class="card-head"><h2>Overtime Records Report</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Date</th>
+            <th>Minutes</th>
+            <th>Hours</th>
+            <th>Hourly Rate</th>
+            <th>Multiplier</th>
+            <th>Calculated Amount</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rep-ot-tbody">
+          <tr><td colspan="9" class="empty">Loading overtime report...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<!-- 3. REIMBURSEMENTS REPORT -->
+<div id="tab-rep-reimb" class="tab-panel" style="display:none;">
+  <section class="card glass filters" style="margin-bottom: 16px;">
+    <div class="filter-row">
+      <div class="filter-field">
+        <label>Filter Status</label>
+        <select id="filter-reimb-status">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section class="card glass">
+    <div class="card-head"><h2>Reimbursements Report</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Claim Type</th>
+            <th>Claim Date</th>
+            <th>Claimed Amount</th>
+            <th>Approved Amount</th>
+            <th>Status</th>
+            <th>Paid in Payroll</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rep-reimb-tbody">
+          <tr><td colspan="8" class="empty">Loading reimbursements report...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<!-- 4. AUDIT TRAIL REPORT -->
+<div id="tab-rep-audit" class="tab-panel" style="display:none;">
+  <section class="card glass">
+    <div class="card-head"><h2>HR Audit Logs</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Entity Type</th>
+            <th>Entity ID</th>
+            <th>Action</th>
+            <th>Performed By</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="rep-audit-tbody">
+          <tr><td colspan="6" class="empty">Loading audit logs...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // Tab Switcher
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.style.display = "none");
+      btn.classList.add("active");
+      document.getElementById(btn.dataset.tab).style.display = "block";
+    });
+  });
+
+  // Load Leave Report
+  async function loadLeaveReport() {
+    const status = document.getElementById("filter-leave-status").value;
+    let url = "/api/hr/leaves";
+    if (status) url += `?status=${status}`;
+
+    try {
+      const rows = await window.j(url);
+      const tbody = document.getElementById("rep-leave-tbody");
+      if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">No leave requests found.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td><strong>Employee #${r.employee_id}</strong></td>
+          <td>${window.escapeHtml(r.leave_type_name || 'Leave')}</td>
+          <td>${r.start_date}</td>
+          <td>${r.end_date}</td>
+          <td>${r.total_days} days</td>
+          <td>${window.escapeHtml(r.reason || '')}</td>
+          <td><span class="badge ${r.status === 'approved' ? 'green' : (r.status === 'rejected' ? 'red' : 'yellow')}">${r.status}</span></td>
+          <td>
+            ${r.status === 'pending' ? `
+              <button class="btn-primary small green btn-app-leave" data-id="${r.id}">Approve</button>
+              <button class="btn-secondary small red btn-rej-leave" data-id="${r.id}">Reject</button>
+            ` : '--'}
+          </td>
+        </tr>
+      `).join('');
+
+      document.querySelectorAll(".btn-app-leave").forEach(b => b.addEventListener("click", () => approveLeave(parseInt(b.dataset.id))));
+      document.querySelectorAll(".btn-rej-leave").forEach(b => b.addEventListener("click", () => rejectLeave(parseInt(b.dataset.id))));
+    } catch (err) { console.error("Error loading leave report:", err); }
+  }
+
+  async function approveLeave(id) {
+    if (!confirm("Approve this leave request?")) return;
+    try {
+      await window.j(`/api/hr/leaves/${id}/approve`, { method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({approved_by: 1}) });
+      loadLeaveReport();
+    } catch (e) { alert(e.message || "Failed to approve"); }
+  }
+
+  async function rejectLeave(id) {
+    const reason = prompt("Enter rejection reason:");
+    if (!reason) return;
+    try {
+      await window.j(`/api/hr/leaves/${id}/reject`, { method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({rejection_reason: reason}) });
+      loadLeaveReport();
+    } catch (e) { alert(e.message || "Failed to reject"); }
+  }
+
+  // Load Overtime Report
+  async function loadOvertimeReport() {
+    const status = document.getElementById("filter-ot-status").value;
+    let url = "/api/hr/overtime";
+    if (status) url += `?status=${status}`;
+
+    try {
+      const rows = await window.j(url);
+      const tbody = document.getElementById("rep-ot-tbody");
+      if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty">No overtime records found.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td><strong>Employee #${r.employee_id}</strong></td>
+          <td>${r.overtime_date}</td>
+          <td>${r.overtime_minutes} min</td>
+          <td>${r.overtime_hours} hrs</td>
+          <td>₹${r.hourly_rate || 0}</td>
+          <td>${r.multiplier}x</td>
+          <td><strong>₹${(r.calculated_amount || 0).toFixed(2)}</strong></td>
+          <td><span class="badge ${r.status === 'approved' ? 'green' : 'yellow'}">${r.status}</span></td>
+          <td>
+            ${r.status === 'pending' ? `<button class="btn-primary small green btn-app-ot" data-id="${r.id}">Approve</button>` : '--'}
+          </td>
+        </tr>
+      `).join('');
+
+      document.querySelectorAll(".btn-app-ot").forEach(b => b.addEventListener("click", () => approveOvertime(parseInt(b.dataset.id))));
+    } catch (err) { console.error("Error loading overtime report:", err); }
+  }
+
+  async function approveOvertime(id) {
+    if (!confirm("Approve this overtime record?")) return;
+    try {
+      await window.j(`/api/hr/overtime/${id}/approve`, { method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({approved_by: 1}) });
+      loadOvertimeReport();
+    } catch (e) { alert(e.message || "Failed to approve"); }
+  }
+
+  // Load Reimbursements Report
+  async function loadReimbReport() {
+    const status = document.getElementById("filter-reimb-status").value;
+    let url = "/api/hr/reimbursements";
+    if (status) url += `?status=${status}`;
+
+    try {
+      const rows = await window.j(url);
+      const tbody = document.getElementById("rep-reimb-tbody");
+      if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">No reimbursements found.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td><strong>Employee #${r.employee_id}</strong></td>
+          <td>${window.escapeHtml(r.reimbursement_type)}</td>
+          <td>${r.claim_date}</td>
+          <td>₹${(r.amount || 0).toFixed(2)}</td>
+          <td>₹${(r.approved_amount || 0).toFixed(2)}</td>
+          <td><span class="badge ${r.status === 'approved' ? 'green' : 'yellow'}">${r.status}</span></td>
+          <td><span class="badge ${r.paid_in_payroll ? 'green' : 'gray'}">${r.paid_in_payroll ? 'Yes' : 'No'}</span></td>
+          <td>
+            ${r.status === 'pending' ? `<button class="btn-primary small green btn-app-reimb" data-id="${r.id}">Approve</button>` : '--'}
+          </td>
+        </tr>
+      `).join('');
+
+      document.querySelectorAll(".btn-app-reimb").forEach(b => b.addEventListener("click", () => approveReimb(parseInt(b.dataset.id))));
+    } catch (err) { console.error("Error loading reimbursements report:", err); }
+  }
+
+  async function approveReimb(id) {
+    if (!confirm("Approve this reimbursement claim?")) return;
+    try {
+      await window.j(`/api/hr/reimbursements/${id}/approve`, { method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({approved_by: 1}) });
+      loadReimbReport();
+    } catch (e) { alert(e.message || "Failed to approve"); }
+  }
+
+  // Load Audit Trail
+  async function loadAuditLog() {
+    try {
+      const res = await window.j("/api/hr/audit-log");
+      const tbody = document.getElementById("rep-audit-tbody");
+      const logs = res.logs || [];
+      if (logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No audit logs recorded yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = logs.map(l => `
+        <tr>
+          <td class="muted small">${l.performed_at ? new Date(l.performed_at).toLocaleString() : '--'}</td>
+          <td><span class="badge gray">${window.escapeHtml(l.entity_type)}</span></td>
+          <td>#${l.entity_id}</td>
+          <td><strong>${window.escapeHtml(l.action)}</strong></td>
+          <td>${l.performed_by ? 'User #' + l.performed_by : 'System'}</td>
+          <td class="small muted">${l.new_values ? JSON.stringify(l.new_values).substring(0, 80) : '--'}</td>
+        </tr>
+      `).join('');
+    } catch (err) { console.error("Error loading audit log:", err); }
+  }
+
+  // Event Listeners for Filters
+  document.getElementById("filter-leave-status").addEventListener("change", loadLeaveReport);
+  document.getElementById("filter-ot-status").addEventListener("change", loadOvertimeReport);
+  document.getElementById("filter-reimb-status").addEventListener("change", loadReimbReport);
+
+  loadLeaveReport();
+  loadOvertimeReport();
+  loadReimbReport();
+  loadAuditLog();
+});
+</script>
+{% endblock %}

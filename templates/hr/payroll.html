@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+{% block title %}Payroll Management - Krishna ERP{% endblock %}
+{% block crumbs %}
+  <i data-lucide="briefcase"></i><span>HR Management</span> <i data-lucide="chevron-right"></i> <span>Payroll</span>
+{% endblock %}
+
+{% block content %}
+<!-- Section 1: Payroll Periods -->
+<section class="card glass">
+  <div class="card-head">
+    <h2>Payroll Periods</h2>
+    <button id="btn-create-period" class="btn-primary">
+      <i data-lucide="plus-circle"></i> Create Payroll Period
+    </button>
+  </div>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Period Name</th>
+          <th>Start Date</th>
+          <th>End Date</th>
+          <th>Payment Date</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="periods-tbody">
+        <tr><td colspan="6" class="empty">Loading payroll periods...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Section 2: Processed Payroll Records (Review Panel) -->
+<section class="card glass" id="review-panel" style="margin-top: 24px; display: none;">
+  <div class="card-head">
+    <div>
+      <h2 id="review-period-title">Payroll Review</h2>
+      <div class="muted small" id="review-period-dates">--</div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button id="btn-finalize-period" class="btn-primary green" hidden>
+        <i data-lucide="lock"></i> Finalize Payroll Period
+      </button>
+    </div>
+  </div>
+
+  <!-- Summary Metrics Cards -->
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 16px 0;">
+    <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+      <div class="muted small">Employees Processed</div>
+      <div style="font-size: 24px; font-weight: 700; margin-top: 4px;" id="rev-emp-count">0</div>
+    </div>
+    <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+      <div class="muted small">Total Gross Earnings</div>
+      <div style="font-size: 24px; font-weight: 700; color: var(--success); margin-top: 4px;" id="rev-gross">₹0.00</div>
+    </div>
+    <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+      <div class="muted small">Total Deductions</div>
+      <div style="font-size: 24px; font-weight: 700; color: var(--danger); margin-top: 4px;" id="rev-deductions">₹0.00</div>
+    </div>
+    <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+      <div class="muted small">Net Payroll Total</div>
+      <div style="font-size: 24px; font-weight: 800; color: var(--accent); margin-top: 4px;" id="rev-net">₹0.00</div>
+    </div>
+  </div>
+
+  <!-- Detailed Payroll Records Table -->
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Basic</th>
+          <th>Earnings</th>
+          <th>Deductions</th>
+          <th>Net Salary</th>
+          <th>Payable Days</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="records-tbody">
+        <tr><td colspan="8" class="empty">Select a payroll period to view records.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============== Create Period Modal ============== -->
+<div id="period-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Create Payroll Period</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="period-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Period Name *</label>
+          <input type="text" id="p-name" class="input-text" placeholder="e.g. August 2026 Payroll" required />
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Start Date *</label>
+            <input type="date" id="p-start-date" class="input-text" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">End Date *</label>
+            <input type="date" id="p-end-date" class="input-text" required />
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Payment Date *</label>
+          <input type="date" id="p-payment-date" class="input-text" required />
+        </div>
+        <div id="period-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" id="p-submit-btn" class="btn-primary">Create Period</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- ============== Payslip Modal ============== -->
+<div id="payslip-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document" style="max-width: 600px; width: 90%;">
+    <header class="modal-head">
+      <h3>Payslip View</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <div class="modal-body" id="payslip-modal-body">
+      <div class="empty">Loading payslip details...</div>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn-secondary" data-close="1" type="button">Close</button>
+      <button class="btn-primary" onclick="window.print()"><i data-lucide="printer"></i> Print Payslip</button>
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentSelectedPeriod = null;
+
+document.addEventListener("DOMContentLoaded", function() {
+  async function loadPeriods() {
+    try {
+      const periods = await window.j("/api/hr/payroll-periods");
+      const tbody = document.getElementById("periods-tbody");
+      if (!periods || periods.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No payroll periods created yet.</td></tr>';
+        return;
+      }
+
+      function getStatusBadge(status) {
+        const s = (status || '').toLowerCase();
+        if (s === 'finalized') return '<span class="badge green">FINALIZED</span>';
+        if (s === 'processed') return '<span class="badge blue">PROCESSED</span>';
+        if (s === 'processing') return '<span class="badge blue">PROCESSING</span>';
+        if (s === 'cancelled') return '<span class="badge red">CANCELLED</span>';
+        return '<span class="badge yellow">DRAFT</span>';
+      }
+
+      tbody.innerHTML = periods.map(p => `
+        <tr>
+          <td><strong>${window.escapeHtml(p.period_name)}</strong></td>
+          <td>${p.start_date}</td>
+          <td>${p.end_date}</td>
+          <td>${p.payment_date || '--'}</td>
+          <td>${getStatusBadge(p.status)}</td>
+          <td>
+            <div style="display:flex; gap:6px;">
+              ${p.status === 'draft' ? `<button class="btn-primary small btn-process" data-id="${p.id}">Process</button>` : ''}
+              ${p.status === 'processed' || p.status === 'finalized' ? `<button class="btn-secondary small btn-review" data-id="${p.id}">Review Records</button>` : ''}
+              ${p.status === 'processed' ? `<button class="btn-primary green small btn-finalize" data-id="${p.id}">Finalize</button>` : ''}
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      if (window.lucide) window.lucide.createIcons();
+
+      // Attach event listeners
+      document.querySelectorAll(".btn-process").forEach(b => b.addEventListener("click", () => processPayroll(parseInt(b.dataset.id))));
+      document.querySelectorAll(".btn-review").forEach(b => b.addEventListener("click", () => loadRecords(parseInt(b.dataset.id))));
+      document.querySelectorAll(".btn-finalize").forEach(b => b.addEventListener("click", () => finalizePayroll(parseInt(b.dataset.id))));
+    } catch (err) {
+      console.error("Error loading payroll periods:", err);
+    }
+  }
+
+  async function processPayroll(periodId) {
+    if (!confirm("Process payroll for this period? All active employee salaries, attendance counters, overtime, and loan deductions will be calculated in a single atomic transaction.")) return;
+    try {
+      const res = await window.j(`/api/hr/payroll-periods/${periodId}/process`, { method: "POST" });
+      alert(res.message || "Payroll processed successfully!");
+      loadPeriods();
+      loadRecords(periodId);
+    } catch (err) {
+      alert("Payroll processing failed: " + err.message);
+    }
+  }
+
+  async function finalizePayroll(periodId) {
+    if (!confirm("FINALIZATION WARNING: Finalizing will permanently lock this payroll period. Attendance corrections or salary structure edits will NOT change finalized figures. Continue?")) return;
+    try {
+      const res = await window.j(`/api/hr/payroll-periods/${periodId}/finalize`, { method: "POST" });
+      alert(res.message || "Payroll period finalized!");
+      loadPeriods();
+      loadRecords(periodId);
+    } catch (err) {
+      alert("Finalization failed: " + err.message);
+    }
+  }
+
+  async function loadRecords(periodId) {
+    currentSelectedPeriod = periodId;
+    const reviewPanel = document.getElementById("review-panel");
+    reviewPanel.style.display = "block";
+    reviewPanel.scrollIntoView({ behavior: 'smooth' });
+
+    try {
+      const period = await window.j(`/api/hr/payroll-periods/${periodId}`);
+      document.getElementById("review-period-title").textContent = `Payroll Review — ${period.period_name}`;
+      document.getElementById("review-period-dates").textContent = `${period.start_date} to ${period.end_date} (Payment: ${period.payment_date || 'N/A'})`;
+
+      const finalizeBtn = document.getElementById("btn-finalize-period");
+      if (period.status === "processed") {
+        finalizeBtn.hidden = false;
+        finalizeBtn.onclick = () => finalizePayroll(periodId);
+      } else {
+        finalizeBtn.hidden = true;
+      }
+
+      const records = await window.j(`/api/hr/payroll-periods/${periodId}/records`);
+      const tbody = document.getElementById("records-tbody");
+
+      let totalGross = 0, totalDed = 0, totalNet = 0;
+      records.forEach(r => {
+        totalGross += (r.gross_earnings || 0);
+        totalDed += (r.total_deductions || 0);
+        totalNet += (r.net_salary || 0);
+      });
+
+      document.getElementById("rev-emp-count").textContent = records.length;
+      document.getElementById("rev-gross").textContent = "₹" + totalGross.toLocaleString('en-IN', {minimumFractionDigits:2});
+      document.getElementById("rev-deductions").textContent = "₹" + totalDed.toLocaleString('en-IN', {minimumFractionDigits:2});
+      document.getElementById("rev-net").textContent = "₹" + totalNet.toLocaleString('en-IN', {minimumFractionDigits:2});
+
+      if (records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">No records generated for this period yet. Click Process to calculate.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = records.map(r => `
+        <tr>
+          <td><strong>Employee #${r.employee_id}</strong></td>
+          <td>₹${(r.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          <td style="color:var(--success); font-weight:600;">+₹${(r.gross_earnings || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          <td style="color:var(--danger); font-weight:600;">-₹${(r.total_deductions || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          <td style="font-weight:700;">₹${(r.net_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          <td>${r.payable_days} days</td>
+          <td><span class="badge ${r.status === 'finalized' ? 'green' : 'blue'}">${r.status}</span></td>
+          <td>
+            <button class="btn-secondary small btn-view-payslip" data-period="${periodId}" data-record="${r.id}">Payslip</button>
+          </td>
+        </tr>
+      `).join('');
+
+      document.querySelectorAll(".btn-view-payslip").forEach(b => {
+        b.addEventListener("click", () => showPayslip(parseInt(b.dataset.period), parseInt(b.dataset.record)));
+      });
+
+    } catch (err) {
+      console.error("Error loading payroll records:", err);
+    }
+  }
+
+  async function showPayslip(periodId, recordId) {
+    const modalBody = document.getElementById("payslip-modal-body");
+    modalBody.innerHTML = '<div class="empty">Loading payslip details...</div>';
+    window.openModal("#payslip-modal");
+
+    try {
+      const r = await window.j(`/api/hr/payroll-periods/${periodId}/records/${recordId}`);
+      modalBody.innerHTML = `
+        <div style="border:1px solid var(--glass-border); padding:20px; border-radius:var(--radius-md); background:white;">
+          <div style="display:flex; justify-content:space-between; border-bottom:2px solid #007AFF; padding-bottom:12px; margin-bottom:16px;">
+            <div>
+              <h3 style="margin:0; color:#007AFF;">KRISHNA ENGLISH SCHOOL</h3>
+              <div class="muted small">Payslip Record #${r.id}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-weight:700;">Net Payable</div>
+              <div style="font-size:22px; font-weight:800; color:#34C759;">₹${(r.net_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</div>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;" class="small">
+            <div><strong>Employee ID:</strong> ${r.employee_id}</div>
+            <div><strong>Payable Days:</strong> ${r.payable_days}</div>
+            <div><strong>Basic Salary:</strong> ₹${(r.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</div>
+            <div><strong>Status:</strong> ${r.status}</div>
+          </div>
+          <table style="width:100%; border-collapse:collapse; margin-top:12px;" class="small">
+            <thead>
+              <tr style="background:#f5f7fa;">
+                <th style="padding:6px; text-align:left;">Earnings</th>
+                <th style="padding:6px; text-align:right;">Amount</th>
+                <th style="padding:6px; text-align:left;">Deductions</th>
+                <th style="padding:6px; text-align:right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding:6px;">Basic Salary</td>
+                <td style="padding:6px; text-align:right;">₹${(r.basic_salary || 0).toFixed(2)}</td>
+                <td style="padding:6px;">Unpaid Leave / Half Day</td>
+                <td style="padding:6px; text-align:right;">₹${(r.leave_deduction || 0).toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding:6px;">Overtime Pay</td>
+                <td style="padding:6px; text-align:right;">₹${(r.overtime_amount || 0).toFixed(2)}</td>
+                <td style="padding:6px;">Late Deduction</td>
+                <td style="padding:6px; text-align:right;">₹${(r.late_deduction || 0).toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding:6px;">Bonus / Incentives</td>
+                <td style="padding:6px; text-align:right;">₹${(r.bonus_amount || 0).toFixed(2)}</td>
+                <td style="padding:6px;">Loan Installment</td>
+                <td style="padding:6px; text-align:right;">₹${(r.loan_deduction || 0).toFixed(2)}</td>
+              </tr>
+              <tr style="font-weight:700; border-top:1px solid #ddd;">
+                <td style="padding:6px;">Total Gross</td>
+                <td style="padding:6px; text-align:right;">₹${(r.gross_earnings || 0).toFixed(2)}</td>
+                <td style="padding:6px;">Total Deductions</td>
+                <td style="padding:6px; text-align:right;">₹${(r.total_deductions || 0).toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+    } catch (err) {
+      modalBody.innerHTML = `<div class="empty danger">Failed to load payslip: ${err.message}</div>`;
+    }
+  }
+
+  // Create Period Modal
+  document.getElementById("btn-create-period").addEventListener("click", () => {
+    document.getElementById("period-form").reset();
+    document.getElementById("period-modal-error").hidden = true;
+    window.openModal("#period-modal");
+  });
+
+  document.getElementById("period-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("p-submit-btn");
+    const errDiv = document.getElementById("period-modal-error");
+    errDiv.hidden = true;
+    btn.disabled = true;
+
+    try {
+      await window.j("/api/hr/payroll-periods", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          period_name: document.getElementById("p-name").value.trim(),
+          start_date: document.getElementById("p-start-date").value,
+          end_date: document.getElementById("p-end-date").value,
+          payment_date: document.getElementById("p-payment-date").value,
+          status: "draft"
+        })
+      });
+      window.closeModal("#period-modal");
+      loadPeriods();
+    } catch (err) {
+      errDiv.textContent = err.message || "Failed to create payroll period.";
+      errDiv.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  loadPeriods();
+});
+</script>
+{% endblock %}

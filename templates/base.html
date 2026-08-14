@@ -46,27 +46,29 @@
              class="nav-sub {% if active_page == 'students' and not active_class %}active{% endif %}">
             <i data-lucide="school"></i><span>All Students</span>
           </a>
-          <div class="nav-group-label">Pre-Primary</div>
-          {% for c in ["Nursery", "Jr KG", "Sr KG"] %}
-            <a href="{{ url_for('page_students_class', class_name=c) }}"
-               class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}">
-              <i data-lucide="graduation-cap"></i><span>{{ c }}</span>
-            </a>
-          {% endfor %}
-          <div class="nav-group-label">Primary</div>
-          {% for c in ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5"] %}
-            <a href="{{ url_for('page_students_class', class_name=c) }}"
-               class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}">
-              <i data-lucide="graduation-cap"></i><span>{{ c }}</span>
-            </a>
-          {% endfor %}
-          <div class="nav-group-label">Upper Primary</div>
-          {% for c in ["Class 6", "Class 7", "Class 8"] %}
-            <a href="{{ url_for('page_students_class', class_name=c) }}"
-               class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}">
-              <i data-lucide="graduation-cap"></i><span>{{ c }}</span>
-            </a>
-          {% endfor %}
+          <div class="nav-sub-scrollable" style="max-height: 200px; overflow-y: auto; padding-right: 4px; border-top: 1px solid var(--glass-border-light); margin-top: 4px; padding-top: 4px;">
+            <div class="nav-group-label" style="padding: 4px 8px 2px 8px; font-size: 10px; opacity: 0.7; letter-spacing: 0.5px;">PRE-PRIMARY</div>
+            {% for c in ["Nursery", "Jr KG", "Sr KG"] %}
+              <a href="{{ url_for('page_students_class', class_name=c) }}"
+                 class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}" style="padding: 6px 12px; font-size: 13px;">
+                <i data-lucide="graduation-cap" style="width: 14px; height: 14px;"></i><span>{{ c }}</span>
+              </a>
+            {% endfor %}
+            <div class="nav-group-label" style="padding: 6px 8px 2px 8px; font-size: 10px; opacity: 0.7; letter-spacing: 0.5px;">PRIMARY</div>
+            {% for c in ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5"] %}
+              <a href="{{ url_for('page_students_class', class_name=c) }}"
+                 class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}" style="padding: 6px 12px; font-size: 13px;">
+                <i data-lucide="graduation-cap" style="width: 14px; height: 14px;"></i><span>{{ c }}</span>
+              </a>
+            {% endfor %}
+            <div class="nav-group-label" style="padding: 6px 8px 2px 8px; font-size: 10px; opacity: 0.7; letter-spacing: 0.5px;">UPPER PRIMARY</div>
+            {% for c in ["Class 6", "Class 7", "Class 8"] %}
+              <a href="{{ url_for('page_students_class', class_name=c) }}"
+                 class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}" style="padding: 6px 12px; font-size: 13px;">
+                <i data-lucide="graduation-cap" style="width: 14px; height: 14px;"></i><span>{{ c }}</span>
+              </a>
+            {% endfor %}
+          </div>
         </div>
       </div>
 
@@ -111,6 +113,34 @@
          class="nav-item {% if active_page == 'attendance_extended' %}active{% endif %}">
         <i data-lucide="clock-4"></i><span>IN/OUT Attendance</span>
       </a>
+
+      <div class="nav-accordion {% if active_page and active_page.startswith('hr_') %}open{% endif %}">
+        <button class="nav-item nav-accordion-trigger {% if active_page and active_page.startswith('hr_') %}active{% endif %}" type="button">
+          <i data-lucide="briefcase"></i><span>HR &amp; Payroll</span><i data-lucide="chevron-down" class="nav-chevron"></i>
+        </button>
+        <div class="nav-accordion-panel">
+          <a href="{{ url_for('page_hr_dashboard') }}"
+             class="nav-sub {% if active_page == 'hr_dashboard' %}active{% endif %}">
+            <i data-lucide="layout-dashboard"></i><span>HR Dashboard</span>
+          </a>
+          <a href="{{ url_for('page_hr_employees') }}"
+             class="nav-sub {% if active_page == 'hr_employees' %}active{% endif %}">
+            <i data-lucide="users"></i><span>Employees</span>
+          </a>
+          <a href="{{ url_for('page_hr_payroll') }}"
+             class="nav-sub {% if active_page == 'hr_payroll' %}active{% endif %}">
+            <i data-lucide="banknote"></i><span>Payroll</span>
+          </a>
+          <a href="{{ url_for('page_hr_reports') }}"
+             class="nav-sub {% if active_page == 'hr_reports' %}active{% endif %}">
+            <i data-lucide="file-spreadsheet"></i><span>Reports</span>
+          </a>
+          <a href="{{ url_for('page_hr_settings') }}"
+             class="nav-sub {% if active_page == 'hr_settings' %}active{% endif %}">
+            <i data-lucide="sliders"></i><span>HR Settings</span>
+          </a>
+        </div>
+      </div>
 
       <a href="{{ url_for('page_settings') }}"
          class="nav-item {% if active_page == 'settings' %}active{% endif %}">

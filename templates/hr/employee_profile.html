@@ -1,0 +1,628 @@
+{% extends "base.html" %}
+{% block title %}Employee Profile - Krishna ERP{% endblock %}
+{% block crumbs %}
+  <i data-lucide="briefcase"></i><span>HR Management</span> 
+  <i data-lucide="chevron-right"></i> <a href="{{ url_for('page_hr_employees') }}">Employees</a>
+  <i data-lucide="chevron-right"></i> <span id="crumb-emp-name">Profile</span>
+{% endblock %}
+
+{% block content %}
+<!-- Employee Profile Header Card -->
+<section class="card glass" style="margin-bottom: 24px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="width: 64px; height: 64px; border-radius: var(--radius-full); background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700;" id="prof-avatar">
+        E
+      </div>
+      <div>
+        <h2 id="prof-name" style="margin: 0;">Loading Employee...</h2>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;" class="muted small">
+          <span id="prof-code" style="font-weight: 600;">--</span>
+          <span>&bull;</span>
+          <span id="prof-dept-desig">--</span>
+          <span id="prof-status-badge"></span>
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <a href="{{ url_for('page_hr_employees') }}" class="btn-secondary">
+        <i data-lucide="arrow-left"></i> Back to Employees
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Profile Tabs Navigation -->
+<div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--glass-border); margin-bottom: 20px; overflow-x: auto; padding-bottom: 8px;">
+  <button class="btn-secondary tab-btn active" data-tab="tab-personal"><i data-lucide="user"></i> Personal</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-employment"><i data-lucide="briefcase"></i> Employment</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-attendance"><i data-lucide="calendar"></i> Attendance</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-leave"><i data-lucide="user-minus"></i> Leave</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-salary"><i data-lucide="indian-rupee"></i> Salary</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-overtime"><i data-lucide="clock"></i> Overtime</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-loans"><i data-lucide="credit-card"></i> Loans</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-payslips"><i data-lucide="file-text"></i> Payslips</button>
+</div>
+
+<!-- Tab Content Panels -->
+
+<!-- 1. PERSONAL TAB -->
+<div id="tab-personal" class="tab-panel active">
+  <div class="card glass">
+    <div class="card-head"><h2>Personal Details</h2></div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 12px 0;">
+      <div><div class="muted small">Full Name</div><div style="font-weight:600;" id="p-fullname">--</div></div>
+      <div><div class="muted small">Gender</div><div style="font-weight:600;" id="p-gender">--</div></div>
+      <div><div class="muted small">Date of Birth</div><div style="font-weight:600;" id="p-dob">--</div></div>
+      <div><div class="muted small">Email Address</div><div style="font-weight:600;" id="p-email">--</div></div>
+      <div><div class="muted small">Phone Number</div><div style="font-weight:600;" id="p-phone">--</div></div>
+      <div><div class="muted small">Alternate Phone</div><div style="font-weight:600;" id="p-alt-phone">--</div></div>
+      <div style="grid-column: span 3;"><div class="muted small">Address</div><div style="font-weight:600;" id="p-address">--</div></div>
+      <div><div class="muted small">Emergency Contact Person</div><div style="font-weight:600;" id="p-emg-name">--</div></div>
+      <div><div class="muted small">Emergency Contact Phone</div><div style="font-weight:600;" id="p-emg-phone">--</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. EMPLOYMENT TAB -->
+<div id="tab-employment" class="tab-panel" style="display:none;">
+  <div class="card glass" style="margin-bottom: 20px;">
+    <div class="card-head"><h2>Employment Details</h2></div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 12px 0;">
+      <div><div class="muted small">Employee Code</div><div style="font-weight:600;" id="e-code">--</div></div>
+      <div><div class="muted small">Department</div><div style="font-weight:600;" id="e-dept">--</div></div>
+      <div><div class="muted small">Designation</div><div style="font-weight:600;" id="e-desig">--</div></div>
+      <div><div class="muted small">Employment Type</div><div style="font-weight:600;" id="e-type">--</div></div>
+      <div><div class="muted small">Employment Status</div><div style="font-weight:600;" id="e-status">--</div></div>
+      <div><div class="muted small">Joining Date</div><div style="font-weight:600;" id="e-joining">--</div></div>
+      <div><div class="muted small">Confirmation Date</div><div style="font-weight:600;" id="e-confirmation">--</div></div>
+      <div><div class="muted small">Reporting Manager</div><div style="font-weight:600;" id="e-manager">--</div></div>
+      <div><div class="muted small">Linked Teacher ID</div><div style="font-weight:600;" id="e-teacher">--</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. ATTENDANCE TAB -->
+<div id="tab-attendance" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head"><h2>Attendance History</h2></div>
+    <div id="att-history-container">
+      <div class="empty">Loading attendance history...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. LEAVE TAB -->
+<div id="tab-leave" class="tab-panel" style="display:none;">
+  <div class="card glass" style="margin-bottom: 20px;">
+    <div class="card-head">
+      <h2>Leave Balances</h2>
+      <button class="btn-primary small" id="btn-apply-leave"><i data-lucide="plus"></i> Request Leave</button>
+    </div>
+    <div id="leave-balances-container" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px;">
+      <div class="empty">Loading balances...</div>
+    </div>
+  </div>
+  <div class="card glass">
+    <div class="card-head"><h2>Leave Requests History</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Total Days</th>
+            <th>Reason</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="leave-history-tbody">
+          <tr><td colspan="6" class="empty">Loading leave history...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 5. SALARY TAB -->
+<div id="tab-salary" class="tab-panel" style="display:none;">
+  <div class="card glass" style="margin-bottom: 20px;">
+    <div class="card-head">
+      <h2>Current Salary Structure</h2>
+      <button class="btn-primary small" id="btn-update-salary"><i data-lucide="edit"></i> Configure Salary Structure</button>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 12px 0;">
+      <div><div class="muted small">Basic Salary</div><div style="font-size: 20px; font-weight: 700;" id="sal-basic">₹0.00</div></div>
+      <div><div class="muted small">Gross Salary</div><div style="font-size: 20px; font-weight: 700;" id="sal-gross">₹0.00</div></div>
+      <div><div class="muted small">Annual CTC</div><div style="font-size: 20px; font-weight: 700;" id="sal-ctc">₹0.00</div></div>
+      <div><div class="muted small">Overtime Rate</div><div style="font-size: 20px; font-weight: 700;" id="sal-ot-rate">₹0.00/hr</div></div>
+      <div><div class="muted small">Pay Frequency</div><div style="font-weight: 600;" id="sal-freq">Monthly</div></div>
+      <div><div class="muted small">Effective From</div><div style="font-weight: 600;" id="sal-effective-from">--</div></div>
+    </div>
+  </div>
+
+  <div class="card glass">
+    <div class="card-head"><h2>Configured Salary Components</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Component Name</th>
+            <th>Type</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody id="salary-components-tbody">
+          <tr><td colspan="3" class="empty">No active salary components</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card glass" style="margin-top: 20px;">
+    <div class="card-head"><h2>Salary History</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Effective From</th>
+            <th>Effective To</th>
+            <th>Basic Salary</th>
+            <th>Gross Salary</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="salary-history-tbody">
+          <tr><td colspan="5" class="empty">No historical salary revisions.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 6. OVERTIME TAB -->
+<div id="tab-overtime" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <h2>Overtime Records</h2>
+      <button class="btn-primary small" id="btn-log-overtime"><i data-lucide="plus"></i> Log Overtime</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Minutes</th>
+            <th>Hours</th>
+            <th>Rate</th>
+            <th>Multiplier</th>
+            <th>Amount</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="overtime-tbody">
+          <tr><td colspan="7" class="empty">Loading overtime records...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 7. LOANS TAB -->
+<div id="tab-loans" class="tab-panel" style="display:none;">
+  <div class="card glass" style="margin-bottom: 20px;">
+    <div class="card-head">
+      <h2>Active Employee Loans</h2>
+      <button class="btn-primary small" id="btn-create-loan"><i data-lucide="plus"></i> Issue Loan</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Principal Amount</th>
+            <th>Remaining Balance</th>
+            <th>Monthly Installment</th>
+            <th>Start Date</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="loans-tbody">
+          <tr><td colspan="6" class="empty">Loading loans...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 8. PAYSLIPS TAB -->
+<div id="tab-payslips" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head"><h2>Generated Payslips</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Gross Earnings</th>
+            <th>Total Deductions</th>
+            <th>Net Salary</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="payslips-tbody">
+          <tr><td colspan="5" class="empty">No payslips generated yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Apply Leave Modal ============== -->
+<div id="leave-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Request Leave</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="leave-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Leave Type *</label>
+          <select id="leave-type-select" required></select>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Start Date *</label>
+            <input type="date" id="leave-start-date" class="input-text" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">End Date *</label>
+            <input type="date" id="leave-end-date" class="input-text" required />
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Reason</label>
+          <input type="text" id="leave-reason" class="input-text" placeholder="Reason for leave..." />
+        </div>
+        <div id="leave-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Submit Request</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- ============== Configure Salary Modal ============== -->
+<div id="salary-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Configure Salary Structure</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="salary-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Basic Salary (Monthly) *</label>
+            <input type="number" step="0.01" id="sal-input-basic" class="input-text" placeholder="25000.00" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Effective From Date *</label>
+            <input type="date" id="sal-input-effective-from" class="input-text" required />
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Overtime Hourly Rate</label>
+            <input type="number" step="0.01" id="sal-input-ot-rate" class="input-text" placeholder="150.00" />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Pay Frequency</label>
+            <select id="sal-input-freq">
+              <option value="monthly">Monthly</option>
+              <option value="bi-weekly">Bi-Weekly</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+        </div>
+        <div id="salary-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Structure</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- ============== Issue Loan Modal ============== -->
+<div id="loan-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Issue Employee Loan / Advance</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="loan-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Loan Type *</label>
+          <select id="loan-type-select">
+            <option value="salary_advance">Salary Advance</option>
+            <option value="personal_loan">Personal Loan</option>
+            <option value="emergency_loan">Emergency Loan</option>
+          </select>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Principal Amount *</label>
+            <input type="number" step="0.01" id="loan-amount" class="input-text" placeholder="10000.00" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Monthly Installment *</label>
+            <input type="number" step="0.01" id="loan-installment" class="input-text" placeholder="2000.00" required />
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Start Date *</label>
+          <input type="date" id="loan-start-date" class="input-text" required />
+        </div>
+        <div id="loan-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Issue Loan</button>
+      </footer>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const EMP_ID = {{ emp_id }};
+
+document.addEventListener("DOMContentLoaded", function() {
+  // Tab Switcher
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.style.display = "none");
+      btn.classList.add("active");
+      const tabId = btn.dataset.tab;
+      document.getElementById(tabId).style.display = "block";
+    });
+  });
+
+  // Load Profile Main Data
+  async function loadProfile() {
+    try {
+      const emp = await window.j(`/api/hr/employees/${EMP_ID}`);
+      document.getElementById("crumb-emp-name").textContent = emp.full_name;
+      document.getElementById("prof-name").textContent = emp.full_name;
+      document.getElementById("prof-code").textContent = emp.employee_code;
+      document.getElementById("prof-dept-desig").textContent = `${emp.department_name || 'No Dept'} • ${emp.designation_name || 'No Desig'}`;
+      document.getElementById("prof-avatar").textContent = (emp.first_name || 'E')[0].toUpperCase();
+      document.getElementById("prof-status-badge").innerHTML = `<span class="badge ${emp.employment_status === 'active' ? 'green' : 'red'}">${window.escapeHtml(emp.employment_status)}</span>`;
+
+      // Personal Tab
+      document.getElementById("p-fullname").textContent = emp.full_name;
+      document.getElementById("p-gender").textContent = emp.gender || '--';
+      document.getElementById("p-dob").textContent = emp.date_of_birth || '--';
+      document.getElementById("p-email").textContent = emp.email || '--';
+      document.getElementById("p-phone").textContent = emp.phone || '--';
+      document.getElementById("p-alt-phone").textContent = emp.alternate_phone || '--';
+      document.getElementById("p-address").textContent = [emp.address, emp.city, emp.state, emp.pincode].filter(Boolean).join(', ') || '--';
+      document.getElementById("p-emg-name").textContent = emp.emergency_contact_name || '--';
+      document.getElementById("p-emg-phone").textContent = emp.emergency_contact_phone || '--';
+
+      // Employment Tab
+      document.getElementById("e-code").textContent = emp.employee_code;
+      document.getElementById("e-dept").textContent = emp.department_name || '--';
+      document.getElementById("e-desig").textContent = emp.designation_name || '--';
+      document.getElementById("e-type").textContent = (emp.employment_type || '--').replace('_', ' ');
+      document.getElementById("e-status").textContent = emp.employment_status;
+      document.getElementById("e-joining").textContent = emp.joining_date || '--';
+      document.getElementById("e-confirmation").textContent = emp.confirmation_date || '--';
+      document.getElementById("e-manager").textContent = emp.reporting_manager_name || '--';
+      document.getElementById("e-teacher").innerHTML = emp.teacher_id ? 
+        `<span class="badge blue">Linked Teacher (ID: ${emp.teacher_id})</span>` : 
+        `<span class="badge gray">Non-Teaching Staff</span>`;
+    } catch (err) {
+      console.error("Error loading employee profile:", err);
+    }
+  }
+
+  // Load Leave Data
+  async function loadLeaves() {
+    try {
+      const balances = await window.j(`/api/hr/employees/${EMP_ID}/leave-balances`);
+      const balContainer = document.getElementById("leave-balances-container");
+      if (!balances || balances.length === 0) {
+        balContainer.innerHTML = '<div class="empty">No leave balances allocated for current year.</div>';
+      } else {
+        balContainer.innerHTML = balances.map(b => `
+          <div style="background:rgba(255,255,255,0.4); padding:16px; border-radius:var(--radius-md); border:1px solid var(--glass-border);">
+            <div class="muted small">${window.escapeHtml(b.leave_type_name)}</div>
+            <div style="font-size:20px; font-weight:700; margin:4px 0;">${b.remaining_days} / ${b.allocated_days} days</div>
+            <div class="muted small">${b.used_days} used &bull; ${b.pending_days} pending</div>
+          </div>
+        `).join('');
+      }
+
+      const leaves = await window.j(`/api/hr/leaves?employee_id=${EMP_ID}`);
+      const tbody = document.getElementById("leave-history-tbody");
+      if (!leaves || leaves.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No leave requests found.</td></tr>';
+      } else {
+        tbody.innerHTML = leaves.map(l => `
+          <tr>
+            <td><strong>${window.escapeHtml(l.leave_type_name || 'Leave')}</strong></td>
+            <td>${l.start_date}</td>
+            <td>${l.end_date}</td>
+            <td>${l.total_days} days</td>
+            <td>${window.escapeHtml(l.reason || '')}</td>
+            <td><span class="badge ${l.status === 'approved' ? 'green' : (l.status === 'rejected' ? 'red' : 'yellow')}">${window.escapeHtml(l.status)}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) { console.error("Error loading leave tab:", e); }
+  }
+
+  // Load Salary Data
+  async function loadSalary() {
+    try {
+      const ss = await window.j(`/api/hr/employees/${EMP_ID}/salary-structure`);
+      document.getElementById("sal-basic").textContent = "₹" + (ss.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2});
+      document.getElementById("sal-gross").textContent = "₹" + (ss.gross_salary || ss.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2});
+      document.getElementById("sal-ctc").textContent = "₹" + (ss.annual_ctc || ((ss.basic_salary || 0)*12)).toLocaleString('en-IN', {minimumFractionDigits:2});
+      document.getElementById("sal-ot-rate").textContent = "₹" + (ss.overtime_rate || 0) + "/hr";
+      document.getElementById("sal-freq").textContent = ss.pay_frequency || 'Monthly';
+      document.getElementById("sal-effective-from").textContent = ss.effective_from || '--';
+
+      const tbody = document.getElementById("salary-components-tbody");
+      if (!ss.components || ss.components.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">No extra components configured.</td></tr>';
+      } else {
+        tbody.innerHTML = ss.components.map(c => `
+          <tr>
+            <td><strong>${window.escapeHtml(c.component_name || 'Component')}</strong></td>
+            <td><span class="badge ${c.component_type === 'earning' ? 'green' : 'red'}">${window.escapeHtml(c.component_type || '')}</span></td>
+            <td>₹${(c.amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) {
+      console.log("No salary structure configured yet for this employee.");
+    }
+
+    try {
+      const history = await window.j(`/api/hr/employees/${EMP_ID}/salary-history`);
+      const histTbody = document.getElementById("salary-history-tbody");
+      if (!history || history.length === 0) {
+        histTbody.innerHTML = '<tr><td colspan="5" class="empty">No historical salary revisions.</td></tr>';
+      } else {
+        histTbody.innerHTML = history.map(h => `
+          <tr>
+            <td>${h.effective_from}</td>
+            <td>${h.effective_to || 'Current'}</td>
+            <td>₹${(h.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+            <td>₹${(h.gross_salary || h.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+            <td><span class="badge ${h.status === 'active' ? 'green' : 'gray'}">${h.status}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) {
+      console.log("No salary history available.");
+    }
+  }
+
+  // Load Loans Data
+  async function loadLoans() {
+    try {
+      const loans = await window.j(`/api/hr/employees/${EMP_ID}/loans`);
+      const tbody = document.getElementById("loans-tbody");
+      if (!loans || loans.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No active loans for this employee.</td></tr>';
+      } else {
+        tbody.innerHTML = loans.map(l => `
+          <tr>
+            <td><strong>${window.escapeHtml(l.loan_type.replace('_', ' '))}</strong></td>
+            <td>₹${(l.principal_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+            <td>₹${(l.remaining_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+            <td>₹${(l.installment_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+            <td>${l.start_date}</td>
+            <td><span class="badge ${l.status === 'active' ? 'blue' : 'green'}">${l.status}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) { console.error("Error loading loans:", e); }
+  }
+
+  // Action Modals Listeners
+  document.getElementById("btn-apply-leave").addEventListener("click", async () => {
+    try {
+      const types = await window.j("/api/hr/leave-types");
+      const sel = document.getElementById("leave-type-select");
+      sel.innerHTML = types.map(t => `<option value="${t.id}">${window.escapeHtml(t.name)}</option>`).join('');
+      window.openModal("#leave-modal");
+    } catch (e) { alert("Failed to load leave types"); }
+  });
+
+  document.getElementById("leave-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j(`/api/hr/employees/${EMP_ID}/leaves`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          leave_type_id: parseInt(document.getElementById("leave-type-select").value),
+          start_date: document.getElementById("leave-start-date").value,
+          end_date: document.getElementById("leave-end-date").value,
+          reason: document.getElementById("leave-reason").value,
+        })
+      });
+      window.closeModal("#leave-modal");
+      loadLeaves();
+    } catch (err) { alert(err.message || "Failed to submit leave request"); }
+  });
+
+  document.getElementById("btn-update-salary").addEventListener("click", () => {
+    window.openModal("#salary-modal");
+  });
+
+  document.getElementById("salary-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j(`/api/hr/employees/${EMP_ID}/salary-structure`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          basic_salary: parseFloat(document.getElementById("sal-input-basic").value),
+          effective_from: document.getElementById("sal-input-effective-from").value,
+          overtime_rate: parseFloat(document.getElementById("sal-input-ot-rate").value || 0),
+          pay_frequency: document.getElementById("sal-input-freq").value,
+          status: "active"
+        })
+      });
+      window.closeModal("#salary-modal");
+      loadSalary();
+    } catch (err) { alert(err.message || "Failed to save salary structure"); }
+  });
+
+  document.getElementById("btn-create-loan").addEventListener("click", () => {
+    window.openModal("#loan-modal");
+  });
+
+  document.getElementById("loan-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j(`/api/hr/employees/${EMP_ID}/loans`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          loan_type: document.getElementById("loan-type-select").value,
+          principal_amount: parseFloat(document.getElementById("loan-amount").value),
+          installment_amount: parseFloat(document.getElementById("loan-installment").value),
+          start_date: document.getElementById("loan-start-date").value,
+          status: "active"
+        })
+      });
+      window.closeModal("#loan-modal");
+      loadLoans();
+    } catch (err) { alert(err.message || "Failed to issue loan"); }
+  });
+
+  loadProfile();
+  loadLeaves();
+  loadSalary();
+  loadLoans();
+});
+</script>
+{% endblock %}

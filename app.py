@@ -52,6 +52,7 @@ from recognition.recognizer import FaceRecognizer
 from time_management import ensure_default_rules
 from time_management.api import bp as time_mgmt_bp
 from auth import apple_client_secret, bp as auth_bp, oauth
+from hr.routes import hr_bp
 
 
 # Canonical class list used by the sidebar / filter dropdowns.
@@ -282,6 +283,7 @@ def create_app(config_overrides: Mapping | None = None) -> Flask:
     register_routes(app)
     app.register_blueprint(auth_bp)
     app.register_blueprint(time_mgmt_bp)
+    app.register_blueprint(hr_bp)
 
     @app.context_processor
     def inject_globals():
@@ -372,6 +374,51 @@ def register_routes(app: Flask) -> None:
     @app.route("/chat")
     def chat_page():
         return render_template("chat.html", active_page=None)
+
+    # ---------------------------------------------------------------- HR PAGES
+    @app.route("/hr")
+    @app.route("/hr/dashboard")
+    def page_hr_dashboard():
+        return render_template(
+            "hr/dashboard.html",
+            active_page="hr_dashboard",
+        )
+
+    @app.route("/hr/employees")
+    def page_hr_employees():
+        return render_template(
+            "hr/employees.html",
+            active_page="hr_employees",
+        )
+
+    @app.route("/hr/employees/<int:emp_id>")
+    def page_hr_employee_profile(emp_id: int):
+        return render_template(
+            "hr/employee_profile.html",
+            active_page="hr_employees",
+            emp_id=emp_id,
+        )
+
+    @app.route("/hr/payroll")
+    def page_hr_payroll():
+        return render_template(
+            "hr/payroll.html",
+            active_page="hr_payroll",
+        )
+
+    @app.route("/hr/reports")
+    def page_hr_reports():
+        return render_template(
+            "hr/reports.html",
+            active_page="hr_reports",
+        )
+
+    @app.route("/hr/settings")
+    def page_hr_settings():
+        return render_template(
+            "hr/settings.html",
+            active_page="hr_settings",
+        )
 
     # ------------------------------------------- enterprise time management
     @app.route("/time-rules/<scope>")

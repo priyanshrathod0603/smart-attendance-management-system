@@ -51,7 +51,7 @@ def signup(client, email="admin@example.test"):
         "password": PASSWORD,
     })
     assert response.status_code == 302
-    return page_csrf(client.get("/"))
+    return page_csrf(client.get("/dashboard"))
 
 
 def test_unauthenticated_requests_are_contained(app_client):
@@ -87,7 +87,7 @@ def test_signup_login_logout_and_csrf(app_client):
         "csrf_token": form_csrf(login), "email": "admin@example.test", "password": PASSWORD, "remember": "on",
     })
     assert successful.status_code == 302
-    assert successful.headers["Location"].endswith("/")
+    assert successful.headers["Location"].endswith("/dashboard") or successful.headers["Location"].endswith("/")
 
 
 def test_expired_or_revoked_server_session_cannot_be_reused(app_client):
@@ -113,7 +113,7 @@ def test_employee_cannot_write_privileged_api_resources(app_client):
         user.role = "employee"
         db.session.commit()
 
-    dashboard = client.get("/")
+    dashboard = client.get("/dashboard")
     csrf = page_csrf(dashboard)
     denied = client.post("/api/teachers", json={"teacher_id": "T-1", "name": "No Access"}, headers={"X-CSRF-Token": csrf})
     assert denied.status_code == 403

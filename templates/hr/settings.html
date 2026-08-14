@@ -1,0 +1,521 @@
+{% extends "base.html" %}
+{% block title %}HR Settings - Krishna ERP{% endblock %}
+{% block crumbs %}
+  <i data-lucide="briefcase"></i><span>HR Management</span> <i data-lucide="chevron-right"></i> <span>Settings</span>
+{% endblock %}
+
+{% block content %}
+<!-- Settings Tabs Navigation -->
+<div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--glass-border); margin-bottom: 20px; overflow-x: auto; padding-bottom: 8px;">
+  <button class="btn-secondary tab-btn active" data-tab="tab-set-dept"><i data-lucide="building"></i> Departments</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-desig"><i data-lucide="award"></i> Designations</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-comp"><i data-lucide="calculator"></i> Salary Components</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-leave"><i data-lucide="user-minus"></i> Leave Types</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-rules"><i data-lucide="settings-2"></i> HR Rules</button>
+</div>
+
+<!-- 1. DEPARTMENTS SETTINGS -->
+<div id="tab-set-dept" class="tab-panel active">
+  <div class="card glass">
+    <div class="card-head">
+      <h2>Departments</h2>
+      <button class="btn-primary small" id="btn-add-dept"><i data-lucide="plus"></i> Add Department</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Department Name</th>
+            <th>Description</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-dept-tbody">
+          <tr><td colspan="4" class="empty">Loading departments...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 2. DESIGNATIONS SETTINGS -->
+<div id="tab-set-desig" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <h2>Designations</h2>
+      <button class="btn-primary small" id="btn-add-desig"><i data-lucide="plus"></i> Add Designation</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Designation Name</th>
+            <th>Department</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-desig-tbody">
+          <tr><td colspan="4" class="empty">Loading designations...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 3. SALARY COMPONENTS SETTINGS -->
+<div id="tab-set-comp" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <h2>Global Salary Components</h2>
+      <button class="btn-primary small" id="btn-add-comp"><i data-lucide="plus"></i> Add Salary Component</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Component Name</th>
+            <th>Type</th>
+            <th>Calculation Type</th>
+            <th>Default Value</th>
+            <th>Taxable</th>
+            <th>PF</th>
+            <th>ESI</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-comp-tbody">
+          <tr><td colspan="9" class="empty">Loading salary components...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 4. LEAVE TYPES SETTINGS -->
+<div id="tab-set-leave" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <h2>Leave Types &amp; Rules</h2>
+      <button class="btn-primary small" id="btn-add-leavetype"><i data-lucide="plus"></i> Add Leave Type</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Leave Type Name</th>
+            <th>Paid / Unpaid</th>
+            <th>Max Days / Year</th>
+            <th>Carry Forward</th>
+            <th>Requires Approval</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-leave-tbody">
+          <tr><td colspan="7" class="empty">Loading leave types...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 5. HR RULES SETTINGS SUMMARY -->
+<div id="tab-set-rules" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head"><h2>Active HR &amp; Payroll Rules</h2></div>
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 12px;">
+      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+        <h3>Daily Salary Calculation</h3>
+        <p class="muted small" style="margin-top:4px;">Monthly Salary &divide; Working Days in Payroll Period (Excludes weekly offs &amp; declared holidays)</p>
+      </div>
+      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+        <h3>Half-Day Deduction Rule</h3>
+        <p class="muted small" style="margin-top:4px;">Half Day = 0.5 &times; Daily Salary deduction per occurrence</p>
+      </div>
+      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+        <h3>Overtime Multiplier</h3>
+        <p class="muted small" style="margin-top:4px;">Default = 1.0x (Configurable per employee salary structure to 1.5x or 2.0x)</p>
+      </div>
+      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+        <h3>Payroll Finalization Immutability</h3>
+        <p class="muted small" style="margin-top:4px;">Finalized payroll writes an immutable <code>PayrollAttendanceSummary</code> snapshot row per employee</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Add Department Modal ============== -->
+<div id="dept-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Department</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="dept-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Code *</label>
+            <input type="text" id="dept-code" class="input-text" placeholder="CS" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Department Name *</label>
+            <input type="text" id="dept-name" class="input-text" placeholder="Computer Science" required />
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Description</label>
+          <input type="text" id="dept-desc" class="input-text" />
+        </div>
+        <div id="dept-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Department</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- ============== Add Designation Modal ============== -->
+<div id="desig-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Designation</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="desig-form">
+      <div class="modal-body">
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Department *</label>
+          <select id="desig-dept-select" required></select>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Code *</label>
+            <input type="text" id="desig-code" class="input-text" placeholder="HOD" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Designation Name *</label>
+            <input type="text" id="desig-name" class="input-text" placeholder="Head of Department" required />
+          </div>
+        </div>
+        <div id="desig-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Designation</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- ============== Add Component Modal ============== -->
+<div id="comp-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Salary Component</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="comp-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Component Code *</label>
+            <input type="text" id="c-code" class="input-text" placeholder="HRA" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Component Name *</label>
+            <input type="text" id="c-name" class="input-text" placeholder="House Rent Allowance" required />
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Component Type *</label>
+            <select id="c-type">
+              <option value="earning">Earning</option>
+              <option value="deduction">Deduction</option>
+            </select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Calculation Type *</label>
+            <select id="c-calc-type">
+              <option value="fixed">Fixed Amount</option>
+              <option value="percentage">Percentage</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Default Value</label>
+          <input type="number" step="0.01" id="c-default-val" class="input-text" placeholder="0.00" />
+        </div>
+        <div id="comp-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Component</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- ============== Add Leave Type Modal ============== -->
+<div id="leavetype-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Leave Type</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="leavetype-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Code *</label>
+            <input type="text" id="lt-code" class="input-text" placeholder="CL" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Leave Type Name *</label>
+            <input type="text" id="lt-name" class="input-text" placeholder="Casual Leave" required />
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Max Days / Year</label>
+            <input type="number" id="lt-max-days" class="input-text" placeholder="12" value="12" />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Paid Leave?</label>
+            <select id="lt-paid">
+              <option value="true">Yes (Paid)</option>
+              <option value="false">No (Unpaid)</option>
+            </select>
+          </div>
+        </div>
+        <div id="leavetype-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Leave Type</button>
+      </footer>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  let allDepts = [];
+
+  // Tab Switcher
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.style.display = "none");
+      btn.classList.add("active");
+      document.getElementById(btn.dataset.tab).style.display = "block";
+    });
+  });
+
+  // Load Departments
+  async function loadDepartments() {
+    try {
+      allDepts = await window.j("/api/hr/departments");
+      const tbody = document.getElementById("set-dept-tbody");
+      if (!allDepts || allDepts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">No departments configured yet.</td></tr>';
+      } else {
+        tbody.innerHTML = allDepts.map(d => `
+          <tr>
+            <td><strong>${window.escapeHtml(d.code)}</strong></td>
+            <td>${window.escapeHtml(d.name)}</td>
+            <td>${window.escapeHtml(d.description || '--')}</td>
+            <td><span class="badge ${d.status === 'active' ? 'green' : 'gray'}">${d.status}</span></td>
+          </tr>
+        `).join('');
+      }
+
+      const sel = document.getElementById("desig-dept-select");
+      sel.innerHTML = '<option value="">Select Department</option>' +
+        allDepts.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+    } catch (e) { console.error("Error loading departments:", e); }
+  }
+
+  // Load Designations
+  async function loadDesignations() {
+    try {
+      const desigs = await window.j("/api/hr/designations");
+      const tbody = document.getElementById("set-desig-tbody");
+      if (!desigs || desigs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">No designations configured yet.</td></tr>';
+      } else {
+        tbody.innerHTML = desigs.map(d => `
+          <tr>
+            <td><strong>${window.escapeHtml(d.code)}</strong></td>
+            <td>${window.escapeHtml(d.name)}</td>
+            <td>${window.escapeHtml(d.department_name || '--')}</td>
+            <td><span class="badge ${d.status === 'active' ? 'green' : 'gray'}">${d.status}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) { console.error("Error loading designations:", e); }
+  }
+
+  // Load Components
+  async function loadComponents() {
+    try {
+      const comps = await window.j("/api/hr/salary-components");
+      const tbody = document.getElementById("set-comp-tbody");
+      if (!comps || comps.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty">No salary components configured.</td></tr>';
+      } else {
+        tbody.innerHTML = comps.map(c => `
+          <tr>
+            <td><strong>${window.escapeHtml(c.component_code)}</strong></td>
+            <td>${window.escapeHtml(c.component_name)}</td>
+            <td><span class="badge ${c.component_type === 'earning' ? 'green' : 'red'}">${c.component_type}</span></td>
+            <td>${c.calculation_type}</td>
+            <td>₹${(c.default_value || 0).toFixed(2)}</td>
+            <td>${c.is_taxable ? 'Yes' : 'No'}</td>
+            <td>${c.affects_pf ? 'Yes' : 'No'}</td>
+            <td>${c.affects_esi ? 'Yes' : 'No'}</td>
+            <td><span class="badge ${c.is_active ? 'green' : 'gray'}">${c.is_active ? 'Active' : 'Inactive'}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) { console.error("Error loading components:", e); }
+  }
+
+  // Load Leave Types
+  async function loadLeaveTypes() {
+    try {
+      const types = await window.j("/api/hr/leave-types");
+      const tbody = document.getElementById("set-leave-tbody");
+      if (!types || types.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">No leave types configured.</td></tr>';
+      } else {
+        tbody.innerHTML = types.map(t => `
+          <tr>
+            <td><strong>${window.escapeHtml(t.code)}</strong></td>
+            <td>${window.escapeHtml(t.name)}</td>
+            <td><span class="badge ${t.paid ? 'green' : 'yellow'}">${t.paid ? 'Paid' : 'Unpaid'}</span></td>
+            <td>${t.max_days_per_year} days</td>
+            <td>${t.carry_forward ? 'Yes' : 'No'}</td>
+            <td>${t.requires_approval ? 'Yes' : 'No'}</td>
+            <td><span class="badge ${t.is_active ? 'green' : 'gray'}">${t.is_active ? 'Active' : 'Inactive'}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) { console.error("Error loading leave types:", e); }
+  }
+
+  // Modals Listeners
+  document.getElementById("btn-add-dept").addEventListener("click", () => {
+    document.getElementById("dept-form").reset();
+    window.openModal("#dept-modal");
+  });
+
+  document.getElementById("dept-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j("/api/hr/departments", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          code: document.getElementById("dept-code").value.trim(),
+          name: document.getElementById("dept-name").value.trim(),
+          description: document.getElementById("dept-desc").value.trim() || null,
+          status: "active"
+        })
+      });
+      window.closeModal("#dept-modal");
+      loadDepartments();
+    } catch (err) { alert(err.message || "Failed to add department"); }
+  });
+
+  document.getElementById("btn-add-desig").addEventListener("click", () => {
+    document.getElementById("desig-form").reset();
+    window.openModal("#desig-modal");
+  });
+
+  document.getElementById("desig-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j("/api/hr/designations", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          department_id: parseInt(document.getElementById("desig-dept-select").value),
+          code: document.getElementById("desig-code").value.trim(),
+          name: document.getElementById("desig-name").value.trim(),
+          status: "active"
+        })
+      });
+      window.closeModal("#desig-modal");
+      loadDesignations();
+    } catch (err) { alert(err.message || "Failed to add designation"); }
+  });
+
+  document.getElementById("btn-add-comp").addEventListener("click", () => {
+    document.getElementById("comp-form").reset();
+    window.openModal("#comp-modal");
+  });
+
+  document.getElementById("comp-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j("/api/hr/salary-components", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          component_code: document.getElementById("c-code").value.trim(),
+          component_name: document.getElementById("c-name").value.trim(),
+          component_type: document.getElementById("c-type").value,
+          calculation_type: document.getElementById("c-calc-type").value,
+          default_value: parseFloat(document.getElementById("c-default-val").value || 0),
+          is_active: true
+        })
+      });
+      window.closeModal("#comp-modal");
+      loadComponents();
+    } catch (err) { alert(err.message || "Failed to add component"); }
+  });
+
+  document.getElementById("btn-add-leavetype").addEventListener("click", () => {
+    document.getElementById("leavetype-form").reset();
+    window.openModal("#leavetype-modal");
+  });
+
+  document.getElementById("leavetype-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j("/api/hr/leave-types", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          code: document.getElementById("lt-code").value.trim(),
+          name: document.getElementById("lt-name").value.trim(),
+          max_days_per_year: parseInt(document.getElementById("lt-max-days").value || 12),
+          paid: document.getElementById("lt-paid").value === "true",
+          is_active: true
+        })
+      });
+      window.closeModal("#leavetype-modal");
+      loadLeaveTypes();
+    } catch (err) { alert(err.message || "Failed to add leave type"); }
+  });
+
+  loadDepartments();
+  loadDesignations();
+  loadComponents();
+  loadLeaveTypes();
+});
+</script>
+{% endblock %}
