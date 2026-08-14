@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+echo "*.db" >> .gitignore
+echo "*.sqlite" >> .gitignore
+echo "*.sqlite3" >> .gitignore*.db
+*.sqlite
+*.sqlite3
