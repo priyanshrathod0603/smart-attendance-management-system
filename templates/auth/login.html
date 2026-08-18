@@ -17,6 +17,17 @@
       <div class="auth-brand"><div class="auth-mark" aria-hidden="true">KP</div><div><p class="auth-brand-name">KRISHNA <span>PAYROLL</span></p><p class="auth-brand-sub">Enterprise Payroll &amp; HR Management System</p></div></div>
       <header class="auth-heading"><h1 id="login-title">Welcome Back</h1><p>Sign in securely to continue managing your payroll system.</p></header>
       {% if error %}<p class="auth-alert auth-error" role="alert">{{ error }}</p>{% endif %}
+      {% if verified %}<p class="auth-alert auth-success" role="status">{{ verified }}</p>{% endif %}
+      {% if unverified_email %}
+      <div class="auth-alert auth-info" role="status">
+        <p>A verification link was sent to <strong>{{ unverified_email }}</strong>. Please check your inbox.</p>
+        <form method="post" action="{{ url_for('auth.resend_verification') }}" style="margin-top:8px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="email" value="{{ unverified_email }}">
+          <button class="auth-submit" type="submit" style="font-size:13px;padding:8px 16px">Resend verification email</button>
+        </form>
+      </div>
+      {% endif %}
       <form method="post" class="auth-form" novalidate>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="login-email">Email address</label>

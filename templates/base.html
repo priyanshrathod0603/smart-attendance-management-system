@@ -316,6 +316,21 @@
     document.addEventListener("DOMContentLoaded", function() {
       lucide.createIcons();
     });
+
+    /* ---- Global fetch() interceptor: redirect on 401/403 ---- */
+    (function () {
+      var _origFetch = window.fetch;
+      window.fetch = function () {
+        return _origFetch.apply(this, arguments).then(function (res) {
+          if (res.status === 401) {
+            window.location.href = "{{ url_for('auth.login', next=request.url) }}";
+          } else if (res.status === 403) {
+            alert("You do not have permission to perform this action.");
+          }
+          return res;
+        });
+      };
+    })();
   </script>
   {% block scripts %}{% endblock %}
 </body>

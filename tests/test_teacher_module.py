@@ -37,15 +37,30 @@ def _csrf(response):
 
 
 def _authenticate(client):
+    from database.auth_models import User, utcnow
+    from database.db import db as _db
+    # Signup (no session issued — email verification required)
     signup = client.get("/signup")
-    response = client.post("/signup", data={
+    client.post("/signup", data={
         "csrf_token": _csrf(signup),
         "name": "Test Administrator",
         "email": "admin@example.test",
         "password": "CorrectHorse1",
-    }, follow_redirects=True)  # follow redirect after signup so we land on dashboard
+    })
+    # Bypass email verification in tests by directly setting verified_at
+    with client.application.app_context():
+        user = User.query.filter_by(email="admin@example.test").one()
+        user.email_verified_at = utcnow()
+        _db.session.commit()
+    # Login
+    login = client.get("/login")
+    response = client.post("/login", data={
+        "csrf_token": _csrf(login),
+        "email": "admin@example.test",
+        "password": "CorrectHorse1",
+    }, follow_redirects=True)
     assert response.status_code == 200, (
-        f"Expected 200 after signup+redirect, got {response.status_code}"
+        f"Expected 200 after login+redirect, got {response.status_code}"
     )
     data = response.get_data(as_text=True)
     # Try csrf-token meta tag first (dashboard page)
@@ -55,7 +70,7 @@ def _authenticate(client):
     # Fallback: form csrf_token (login/landing page)
     form_token = re.search(r'name="csrf_token" value="([^"]+)"', data)
     assert form_token, (
-        "Could not find csrf-token meta or csrf_token form field after signup. "
+        "Could not find csrf-token meta or csrf_token form field after login. "
         f"Response snippet: {data[:500]}"
     )
     return form_token.group(1)

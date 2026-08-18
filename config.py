@@ -52,9 +52,11 @@ class Config:
     SESSION_COOKIE_SECURE = _as_bool(os.getenv("SESSION_COOKIE_SECURE"), not DEBUG)
     SESSION_COOKIE_SAMESITE = "Lax"
     PERMANENT_SESSION_LIFETIME = timedelta(days=int(os.getenv("AUTH_REMEMBER_DAYS", "30")))
-    AUTH_SESSION_HOURS = int(os.getenv("AUTH_SESSION_HOURS", "8"))
+    AUTH_SESSION_HOURS = int(os.getenv("AUTH_SESSION_HOURS", "12"))
     AUTH_REMEMBER_DAYS = int(os.getenv("AUTH_REMEMBER_DAYS", "30"))
     AUTH_MAX_LOGIN_ATTEMPTS = int(os.getenv("AUTH_MAX_LOGIN_ATTEMPTS", "5"))
+    AUTH_VERIFICATION_HOURS = int(os.getenv("AUTH_VERIFICATION_HOURS", "24"))
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=int(os.getenv("AUTH_SESSION_HOURS", "12")) + 1)
     SMTP_HOST = os.getenv("SMTP_HOST")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USERNAME = os.getenv("SMTP_USERNAME")

@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import secrets
 from datetime import timedelta
+from email.mime.text import MIMEText
 from functools import wraps
+from smtplib import SMTP
 from urllib.parse import urljoin, urlparse
 
 from argon2 import PasswordHasher
@@ -17,14 +20,240 @@ from flask import Blueprint, current_app, g, jsonify, redirect, render_template,
 from database.auth_models import AuthSession, AuthToken, LoginEvent, OAuthIdentity, User, utcnow
 from database.db import db
 
+logger = logging.getLogger(__name__)
+
 bp = Blueprint("auth", __name__)
 oauth = OAuth()
 ph = PasswordHasher()
 
+# ---------------------------------------------------------------------------
+# Roles
+# ---------------------------------------------------------------------------
 ROLES = {"super_admin", "hr_admin", "payroll_manager", "finance_manager", "manager", "employee", "viewer"}
-WRITE_ROLES = {"super_admin", "hr_admin", "payroll_manager", "finance_manager", "manager"}
 ADMIN_ROLES = {"super_admin", "hr_admin"}
 
+# ---------------------------------------------------------------------------
+# Permissions — role → set of granular permission strings
+# ---------------------------------------------------------------------------
+_ALL_PERMISSIONS = {
+    "dashboard.view", "dashboard.manage",
+    "students.view", "students.create", "students.update", "students.delete",
+    "teachers.view", "teachers.create", "teachers.update", "teachers.delete",
+    "attendance.view", "attendance.mark", "attendance.update", "attendance.delete",
+    "cameras.view", "cameras.create", "cameras.update", "cameras.delete", "cameras.start", "cameras.stop",
+    "reports.view", "reports.export",
+    "settings.view", "settings.update",
+    "users.view", "users.create", "users.update", "users.disable", "users.roles.update",
+    "employees.view", "employees.create", "employees.update", "employees.delete",
+    "leave.view", "leave.create", "leave.approve",
+    "payroll.view", "payroll.process", "payroll.finalize",
+    "enterprise.view", "enterprise.manage",
+    "time_rules.view", "time_rules.update",
+    "unknown_faces.view", "unknown_faces.action",
+    "chat.view",
+}
+
+ROLE_PERMISSIONS: dict[str, set[str]] = {
+    "super_admin": _ALL_PERMISSIONS.copy(),
+    "hr_admin": {
+        "dashboard.view", "dashboard.manage",
+        "students.view", "students.create", "students.update", "students.delete",
+        "teachers.view", "teachers.create", "teachers.update", "teachers.delete",
+        "attendance.view", "attendance.mark", "attendance.update", "attendance.delete",
+        "cameras.view", "cameras.create", "cameras.update", "cameras.delete", "cameras.start", "cameras.stop",
+        "reports.view", "reports.export",
+        "employees.view", "employees.create", "employees.update", "employees.delete",
+        "leave.view", "leave.create", "leave.approve",
+        "payroll.view", "payroll.process", "payroll.finalize",
+        "enterprise.view", "enterprise.manage",
+        "time_rules.view", "time_rules.update",
+        "unknown_faces.view", "unknown_faces.action",
+        "users.view", "users.update", "users.roles.update",
+        "chat.view",
+    },
+    "payroll_manager": {
+        "dashboard.view",
+        "employees.view", "employees.update",
+        "leave.view", "leave.approve",
+        "payroll.view", "payroll.process", "payroll.finalize",
+        "reports.view", "reports.export",
+        "chat.view",
+    },
+    "finance_manager": {
+        "dashboard.view",
+        "employees.view",
+        "payroll.view", "payroll.process", "payroll.finalize",
+        "reports.view", "reports.export",
+        "chat.view",
+    },
+    "manager": {
+        "dashboard.view",
+        "students.view", "students.create", "students.update", "students.delete",
+        "teachers.view", "teachers.create", "teachers.update", "teachers.delete",
+        "attendance.view", "attendance.mark", "attendance.update", "attendance.delete",
+        "cameras.view", "cameras.start", "cameras.stop",
+        "reports.view",
+        "employees.view", "employees.create", "employees.update",
+        "leave.view", "leave.create", "leave.approve",
+        "enterprise.view",
+        "time_rules.view", "time_rules.update",
+        "unknown_faces.view", "unknown_faces.action",
+        "chat.view",
+    },
+    "employee": {
+        "dashboard.view",
+        "students.view", "students.create", "students.update",
+        "teachers.view",
+        "attendance.view", "attendance.mark", "attendance.update",
+        "cameras.view", "cameras.start", "cameras.stop",
+        "reports.view",
+        "enterprise.view",
+        "time_rules.view",
+        "unknown_faces.view", "unknown_faces.action",
+        "chat.view",
+    },
+    "viewer": {
+        "dashboard.view",
+        "students.view",
+        "teachers.view",
+        "attendance.view",
+        "cameras.view",
+        "reports.view",
+        "enterprise.view",
+        "time_rules.view",
+        "chat.view",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Endpoint → required permission (method-aware)
+# ---------------------------------------------------------------------------
+# Keys are endpoint names (as Flask registers them); methods in uppercase.
+# "GET" permission is enforced only for page/API endpoints that need it.
+# Wild-card prefix matches: "api.students" matches "api.students" and
+# "api.students_class" etc.  Specific endpoint names win over prefixes.
+_ENDPOINT_PERMS: dict[str, dict[str, str | None]] = {
+    # --- Page routes ---
+    "page_dashboard": {"GET": "dashboard.view"},
+    "page_attendance": {"GET": "attendance.view"},
+    "page_students": {"GET": "students.view"},
+    "page_students_class": {"GET": "students.view"},
+    "page_teachers": {"GET": "teachers.view"},
+    "page_cameras": {"GET": "cameras.view"},
+    "page_reports": {"GET": "reports.view"},
+    "page_settings": {"GET": "settings.view"},
+    "chat_page": {"GET": "chat.view"},
+    "page_hr_dashboard": {"GET": "enterprise.view"},
+    "page_hr_employees": {"GET": "employees.view"},
+    "page_hr_employee_profile": {"GET": "employees.view"},
+    "page_hr_payroll": {"GET": "payroll.view"},
+    "page_hr_reports": {"GET": "reports.view"},
+    "page_hr_settings": {"GET": "settings.update"},
+    "page_time_rules": {"GET": "time_rules.view"},
+    "page_dashboard_enterprise": {"GET": "enterprise.view"},
+    "page_reports_enterprise": {"GET": "reports.view"},
+    "page_attendance_extended": {"GET": "attendance.view"},
+    # --- API routes ---
+    "api_meta": {"GET": None},
+    "api_stats": {"GET": "dashboard.view"},
+    "api_students": {"GET": "students.view", "POST": "students.create"},
+    "api_students_sid": {"GET": "students.view", "PUT": "students.update", "DELETE": "students.delete"},
+    "api_student_photo": {"POST": "students.update"},
+    "api_teachers": {"GET": "teachers.view", "POST": "teachers.create"},
+    "api_teacher_sid": {"PUT": "teachers.update", "DELETE": "teachers.delete"},
+    "api_teacher_photo": {"POST": "teachers.update"},
+    "api_teacher_profile": {"GET": "teachers.view"},
+    "api_teacher_attendance": {"GET": "attendance.view"},
+    "api_attendance": {"GET": "attendance.view", "POST": "attendance.mark"},
+    "api_attendance_sid": {"PUT": "attendance.update", "DELETE": "attendance.delete"},
+    "api_attendance_today": {"GET": "attendance.view"},
+    "api_attendance_export": {"GET": "reports.export"},
+    "api_cameras": {"GET": "cameras.view", "POST": "cameras.create"},
+    "api_camera_sid": {"PUT": "cameras.update", "DELETE": "cameras.delete"},
+    "api_camera_start": {"POST": "cameras.start"},
+    "api_camera_stop": {"POST": "cameras.stop"},
+    "api_camera_test": {"POST": "cameras.start"},
+    "api_cameras_status": {"GET": "cameras.view"},
+    "api_reports_export": {"GET": "reports.export"},
+    "api_reports_preview": {"GET": "reports.view"},
+    "api_unknown_faces": {"GET": "unknown_faces.view"},
+    "api_unknown_face_action": {"POST": "unknown_faces.action", "DELETE": "unknown_faces.action"},
+    "api_ask": {"POST": "chat.view"},
+    # --- Enterprise / HR API (blueprint prefixes) ---
+    "hr.departments": {"GET": "employees.view", "POST": "employees.create"},
+    "hr.department_id": {"GET": "employees.view", "PUT": "employees.update"},
+    "hr.designations": {"GET": "employees.view", "POST": "employees.create"},
+    "hr.designation_id": {"GET": "employees.view", "PUT": "employees.update"},
+    "hr.salary_components": {"GET": "payroll.view", "POST": "payroll.view"},
+    "hr.salary_component_id": {"GET": "payroll.view", "PUT": "payroll.view"},
+    "hr.sync_teachers": {"POST": "employees.create"},
+    "hr.employees": {"GET": "employees.view", "POST": "employees.create"},
+    "hr.employee_id": {"GET": "employees.view", "PUT": "employees.update", "DELETE": "employees.delete"},
+    "hr.employee_by_teacher": {"GET": "employees.view"},
+    "hr.employee_salary": {"GET": "employees.view", "POST": "employees.update"},
+    "hr.employee_leaves": {"POST": "leave.create"},
+    "hr.employee_overtime": {"POST": "employees.update"},
+    "hr.employee_bonuses": {"POST": "employees.update"},
+    "hr.employee_loans": {"GET": "employees.view", "POST": "employees.update"},
+    "hr.loan_repayments": {"POST": "employees.update"},
+    "hr.employee_reimbursements": {"POST": "employees.update"},
+    "hr.leave_types": {"GET": "leave.view", "POST": "leave.create"},
+    "hr.leaves": {"GET": "leave.view"},
+    "hr.leave_approve": {"PUT": "leave.approve"},
+    "hr.leave_reject": {"PUT": "leave.approve"},
+    "hr.leave_cancel": {"PUT": "leave.create"},
+    "hr.overtime": {"GET": "leave.view"},
+    "hr.overtime_approve": {"PUT": "leave.approve"},
+    "hr.reimbursements": {"GET": "leave.view"},
+    "hr.reimbursement_approve": {"PUT": "leave.approve"},
+    "hr.payroll_periods": {"GET": "payroll.view", "POST": "payroll.process"},
+    "hr.payroll_period_id": {"GET": "payroll.view"},
+    "hr.payroll_process": {"POST": "payroll.process"},
+    "hr.payroll_finalize": {"POST": "payroll.finalize"},
+    "hr.payroll_records": {"GET": "payroll.view"},
+    "hr.payroll_record_id": {"GET": "payroll.view"},
+    "hr.payslips": {"GET": "payroll.view", "POST": "payroll.view"},
+    "hr.dashboard_summary": {"GET": "enterprise.view"},
+    "hr.audit_log": {"GET": "settings.view"},
+    "api_enterprise_attendance": {"GET": "enterprise.view", "POST": "attendance.mark"},
+    "api_enterprise_dashboard": {"GET": "enterprise.view"},
+    "api_enterprise_summary": {"GET": "enterprise.view"},
+    "api_enterprise_widgets": {"GET": "enterprise.view"},
+    "api_enterprise_sessions": {"GET": "attendance.view"},
+    "api_enterprise_events": {"GET": "attendance.view"},
+    "api_enterprise_settings": {"GET": "settings.view", "PUT": "settings.update"},
+    "api_enterprise_time_rules": {"GET": "time_rules.view", "PUT": "time_rules.update"},
+    # --- Auth account pages (always allowed if authenticated) ---
+    "auth.profile": {"GET": None},
+    "auth.security": {"GET": None},
+    "auth.active_sessions": {"GET": None},
+    "auth.change_password": {"GET": None, "POST": None},
+}
+
+
+def _required_permission(endpoint: str | None, method: str) -> str | None:
+    """Return the permission required for *endpoint* + *method*, or None."""
+    if not endpoint:
+        return None
+    # Exact match first
+    rule = _ENDPOINT_PERMS.get(endpoint)
+    if rule:
+        return rule.get(method.upper())
+    # HR blueprint endpoints use "hr.<name>" pattern
+    if "." in endpoint:
+        rule = _ENDPOINT_PERMS.get(endpoint)
+        if rule:
+            return rule.get(method.upper())
+    return None
+
+
+def user_has_permission(user: User, permission: str) -> bool:
+    return permission in ROLE_PERMISSIONS.get(user.role, set())
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
@@ -82,7 +311,7 @@ def _safe_next(value: str | None) -> str | None:
 def _issue(user: User, remember: bool = False) -> None:
     """Rotate the browser/session identifier and create a hashed server record."""
     raw = secrets.token_urlsafe(48)
-    hours = current_app.config["AUTH_REMEMBER_DAYS"] * 24 if remember else current_app.config["AUTH_SESSION_HOURS"]
+    hours = current_app.config["AUTH_SESSION_HOURS"]
     row = AuthSession(
         token_hash=_hash(raw), user=user, csrf_secret=secrets.token_urlsafe(32),
         device=request.user_agent.string[:255], ip_address=request.remote_addr,
@@ -125,13 +354,17 @@ def _too_many_failures(email: str) -> bool:
     return failures >= current_app.config["AUTH_MAX_LOGIN_ATTEMPTS"]
 
 
+# ---------------------------------------------------------------------------
+# Global before-request: authentication + authorization
+# ---------------------------------------------------------------------------
+
 @bp.before_app_request
 def load_and_protect():
     g.user = g.auth_session = None
     raw = session.get("sid")
     if raw:
         row = AuthSession.query.filter_by(token_hash=_hash(raw), revoked_at=None).first()
-        if row and row.expires_at > utcnow() and row.user.role in ROLES:
+        if row and row.expires_at > utcnow() and row.user.role in ROLES and row.user.is_active:
             g.auth_session, g.user = row, row.user
             row.last_seen_at = utcnow()
             db.session.commit()
@@ -141,7 +374,11 @@ def load_and_protect():
     endpoint = request.endpoint or ""
     public = {
         "auth.login", "auth.signup", "auth.forgot_password", "auth.reset_password",
-        "auth.oauth_google", "auth.oauth_google_callback", "auth.oauth_microsoft", "auth.oauth_microsoft_callback", "auth.oauth_apple", "auth.oauth_apple_callback",
+        "auth.verify_email", "auth.resend_verification",
+        "auth.oauth_google", "auth.oauth_google_callback",
+        "auth.oauth_microsoft", "auth.oauth_microsoft_callback",
+        "auth.oauth_apple", "auth.oauth_apple_callback",
+        "page_landing", "page_landing_alias",
         "static",
     }
     if endpoint in public or request.path.startswith("/static/"):
@@ -151,7 +388,8 @@ def load_and_protect():
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         if not _valid_csrf():
             return _json_error("invalid CSRF token", 400)
-        if endpoint not in {"auth.logout", "auth.change_password"} and g.user.role not in WRITE_ROLES:
+        perm = _required_permission(endpoint, request.method)
+        if perm and not user_has_permission(g.user, perm):
             return _json_error("insufficient permission", 403)
 
 
@@ -160,9 +398,58 @@ def auth_context():
     return {"current_user": current_user(), "csrf_token": csrf_token}
 
 
+# ---------------------------------------------------------------------------
+# Password policy
+# ---------------------------------------------------------------------------
+
 def _password_ok(password: str) -> bool:
     return len(password) >= 12 and all(re.search(pattern, password) for pattern in (r"[a-z]", r"[A-Z]", r"\d"))
 
+
+# ---------------------------------------------------------------------------
+# Email verification helpers
+# ---------------------------------------------------------------------------
+
+def _send_verification_email(user: User, raw_token: str) -> None:
+    """Send a verification email via SMTP, or log the link in DEBUG mode."""
+    verify_url = url_for("auth.verify_email", token=raw_token, _external=True)
+    if current_app.config.get("SMTP_HOST") and current_app.config.get("SMTP_USERNAME"):
+        try:
+            msg = MIMEText(
+                render_template("auth/verify_email.txt", name=user.name, url=verify_url),
+                "plain",
+            )
+            msg["Subject"] = "Verify your email — KRISHNA PAYROLL"
+            msg["From"] = current_app.config.get("SMTP_FROM", current_app.config["SMTP_USERNAME"])
+            msg["To"] = user.email
+            with SMTP(current_app.config["SMTP_HOST"], current_app.config["SMTP_PORT"]) as s:
+                s.starttls()
+                s.login(current_app.config["SMTP_USERNAME"], current_app.config["SMTP_PASSWORD"])
+                s.send_message(msg)
+            logger.info("Verification email sent to %s", user.email)
+        except Exception:
+            logger.exception("Failed to send verification email to %s", user.email)
+    elif current_app.debug:
+        logger.info("DEBUG verification link for %s: %s", user.email, verify_url)
+    else:
+        logger.warning("SMTP not configured; verification email for %s not sent", user.email)
+
+
+def _create_verification_token(user: User) -> str:
+    """Create a single-use verification token and send the email. Returns the raw token."""
+    # Invalidate previous unused tokens
+    AuthToken.query.filter_by(user_id=user.id, purpose="verify", used_at=None).update({"used_at": utcnow()})
+    raw = secrets.token_urlsafe(48)
+    hours = current_app.config["AUTH_VERIFICATION_HOURS"]
+    db.session.add(AuthToken(token_hash=_hash(raw), user_id=user.id, purpose="verify", expires_at=utcnow() + timedelta(hours=hours)))
+    db.session.commit()
+    _send_verification_email(user, raw)
+    return raw
+
+
+# ---------------------------------------------------------------------------
+# Routes — Login
+# ---------------------------------------------------------------------------
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
@@ -177,10 +464,22 @@ def login():
             db.session.commit()
             return render_template("auth/login.html", error="Too many attempts. Please try again later."), 429
         user = User.query.filter_by(email=email).first()
-        if not user or not user.password_hash or (user.locked_until and user.locked_until > utcnow()):
+        if not user or not user.password_hash:
             _event(email, "login_denied", user)
             db.session.commit()
             return render_template("auth/login.html", error="Invalid email or password."), 401
+        if not user.is_active:
+            _event(email, "login_denied", user)
+            db.session.commit()
+            return render_template("auth/login.html", error="This account is deactivated. Please contact an administrator."), 403
+        if (user.locked_until and user.locked_until > utcnow()):
+            _event(email, "login_denied", user)
+            db.session.commit()
+            return render_template("auth/login.html", error="Too many attempts. Please try again later."), 429
+        if not user.email_verified_at:
+            _event(email, "login_denied", user)
+            db.session.commit()
+            return render_template("auth/login.html", error="Please verify your email before logging in.", unverified_email=email), 403
         try:
             valid = ph.verify(user.password_hash, request.form.get("password") or "")
         except (VerifyMismatchError, VerificationError, InvalidHashError):
@@ -201,6 +500,10 @@ def login():
     return render_template("auth/login.html")
 
 
+# ---------------------------------------------------------------------------
+# Routes — Signup
+# ---------------------------------------------------------------------------
+
 @bp.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
@@ -217,10 +520,55 @@ def signup():
         db.session.flush()
         _event(email, "signup", user)
         db.session.commit()
-        _issue(user)
-        return redirect(url_for("page_dashboard"))
+        # Send verification email — do NOT issue session
+        _create_verification_token(user)
+        return render_template("auth/verify_required.html", email=email)
     return render_template("auth/signup.html")
 
+
+# ---------------------------------------------------------------------------
+# Routes — Email verification
+# ---------------------------------------------------------------------------
+
+@bp.route("/verify-email/<token>", methods=["GET"])
+def verify_email(token: str):
+    row = AuthToken.query.filter_by(token_hash=_hash(token), purpose="verify", used_at=None).first()
+    if not row or row.expires_at <= utcnow():
+        return render_template("auth/login.html", error="This verification link is invalid or has expired.")
+    user = db.session.get(User, row.user_id)
+    if not user:
+        return render_template("auth/login.html", error="This verification link is invalid or has expired.")
+    row.used_at = utcnow()
+    user.email_verified_at = utcnow()
+    db.session.commit()
+    return render_template("auth/login.html", verified="Your email has been verified. You may now sign in.")
+
+
+@bp.route("/resend-verification", methods=["GET", "POST"])
+def resend_verification():
+    if request.method == "POST":
+        if not _valid_csrf():
+            return render_template("auth/login.html", error="Your form expired. Please try again."), 400
+        email = (request.form.get("email") or "").strip().lower()
+        user = User.query.filter_by(email=email).first()
+        if user and not user.email_verified_at:
+            # Rate-limit: at most 3 resend attempts per hour
+            cutoff = utcnow() - timedelta(hours=1)
+            sends = LoginEvent.query.filter(
+                LoginEvent.event == "verification_resent", LoginEvent.user_id == user.id, LoginEvent.created_at >= cutoff,
+            ).count()
+            if sends < 3:
+                _create_verification_token(user)
+                _event(email, "verification_resent", user)
+                db.session.commit()
+        # Always return the same message to avoid leaking account existence
+        return render_template("auth/login.html", verified="If an account exists with that email, a new verification link has been sent.")
+    return redirect(url_for("auth.login"))
+
+
+# ---------------------------------------------------------------------------
+# Routes — Forgot / Reset password
+# ---------------------------------------------------------------------------
 
 @bp.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
@@ -261,6 +609,10 @@ def reset_password(token: str):
     return render_template("auth/reset_password.html")
 
 
+# ---------------------------------------------------------------------------
+# Routes — Logout
+# ---------------------------------------------------------------------------
+
 @bp.route("/logout", methods=["POST"])
 def logout():
     if not _valid_csrf():
@@ -271,6 +623,10 @@ def logout():
         db.session.commit()
     return _clear_login(redirect(url_for("auth.login")))
 
+
+# ---------------------------------------------------------------------------
+# Routes — Account / Security
+# ---------------------------------------------------------------------------
 
 @bp.route("/profile")
 def profile():
@@ -310,6 +666,10 @@ def change_password():
         return redirect(url_for("auth.security"))
     return render_template("auth/account.html", section="security", sessions=[])
 
+
+# ---------------------------------------------------------------------------
+# OAuth helpers
+# ---------------------------------------------------------------------------
 
 def _oauth_client(provider: str):
     return oauth.create_client(provider)
@@ -355,16 +715,10 @@ def _oauth_callback(provider: str, callback_endpoint: str):
     identity = OAuthIdentity.query.filter_by(provider=provider, subject=subject).first()
     user = identity and db.session.get(User, identity.user_id)
     if not user:
-        # Apple only returns the email claim on the first consent.  Existing
-        # identities must therefore be resolved by provider subject before we
-        # require an email address.  New account linking still requires an
-        # explicitly verified email claim.
         email = (claims.get("email") or claims.get("preferred_username") or "").strip().lower()
         verified = claims.get("email_verified")
         if isinstance(verified, str):
             verified = verified.strip().lower() == "true"
-        # A Microsoft-issued ID token is itself the verified identity proof;
-        # Microsoft commonly exposes preferred_username but no email_verified.
         if provider == "microsoft" and email:
             verified = True
         if not email or not verified:
@@ -375,7 +729,7 @@ def _oauth_callback(provider: str, callback_endpoint: str):
             db.session.add(user)
             db.session.flush()
         db.session.add(OAuthIdentity(provider=provider, subject=subject, user_id=user.id))
-    if user.role not in ROLES or (user.locked_until and user.locked_until > utcnow()):
+    if user.role not in ROLES or not user.is_active or (user.locked_until and user.locked_until > utcnow()):
         return render_template("auth/login.html", error="This account is unavailable. Please contact an administrator."), 403
     email = user.email
     _event(email, f"oauth_{provider}", user)

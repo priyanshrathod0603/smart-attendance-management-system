@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
-echo "*.db" >> .gitignore
-echo "*.sqlite" >> .gitignore
-echo "*.sqlite3" >> .gitignore*.db
+*.db
 *.sqlite
 *.sqlite3
+*.db.bak-*
+.env
+.env.*
+.zcode/
+.pytest_cache/
