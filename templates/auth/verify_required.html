@@ -12,18 +12,24 @@
   <main class="auth-shell" aria-labelledby="verify-title">
     <div class="auth-orb auth-orb-one" aria-hidden="true"></div><div class="auth-orb auth-orb-two" aria-hidden="true"></div>
     <section class="auth-card auth-card-login">
-      <div class="auth-brand"><div class="auth-mark" aria-hidden="true">KP</div><div><p class="auth-brand-name">KRISHNA <span>PAYROLL</span></p><p class="auth-brand-sub">Enterprise Payroll &amp; HR Management System</p></div></div>
+      <div class="auth-brand"><div class="auth-mark" aria-hidden="true">KP</div><div><p class="auth-brand-name">KRISHNA <span>PAYROLL</span></p><p class="auth-brand-sub">Enterprise Payroll & HR Management System</p></div></div>
       <header class="auth-heading">
         <h1 id="verify-title">Check your email</h1>
-        <p>We've sent a verification link to <strong>{{ email }}</strong>. Please click the link to activate your account.</p>
+        <p>We've sent a verification email to <strong>{{ email }}</strong> with both a verification link and a 6-digit code.</p>
       </header>
+      <div class="auth-options">
+        <a href="{{ url_for('auth.verify_code', email=email) }}" class="auth-option-link">
+          <span class="auth-option-icon">🔢</span>
+          <span>Enter 6-digit code instead</span>
+        </a>
+      </div>
       <form method="post" action="{{ url_for('auth.resend_verification') }}" class="auth-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="email" value="{{ email }}">
         <button class="auth-submit" type="submit">Resend verification email</button>
       </form>
       <p class="auth-signup">Already verified? <a href="{{ url_for('auth.login') }}">Sign in</a></p>
-      <footer class="auth-legal"><span>Secure &amp; Protected</span></footer>
+      <footer class="auth-legal"><span>Secure & Protected</span></footer>
     </section>
   </main>
   <script src="{{ url_for('static', filename='auth.js') }}" defer></script>

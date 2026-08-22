@@ -165,13 +165,18 @@ def ensure_schema_compat() -> None:
         "ALTER TABLE teacher_time_rules ADD COLUMN IF NOT EXISTS out_detection_start VARCHAR(5) NOT NULL DEFAULT '16:00'",
         "ALTER TABLE teacher_time_rules ADD COLUMN IF NOT EXISTS early_exit_time VARCHAR(5) NOT NULL DEFAULT '16:30'",
         "ALTER TABLE teacher_time_rules ADD COLUMN IF NOT EXISTS overtime_start VARCHAR(5) NOT NULL DEFAULT '17:00'",
+        # ---- auth verification code additions ----
+        "ALTER TABLE auth_tokens ADD COLUMN IF NOT EXISTS verification_code_hash VARCHAR(64)",
+        "ALTER TABLE auth_tokens ADD COLUMN IF NOT EXISTS verification_code_expires_at TIMESTAMPTZ",
+        "ALTER TABLE auth_tokens ADD COLUMN IF NOT EXISTS verification_attempts INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE auth_tokens ADD COLUMN IF NOT EXISTS verification_code_used_at TIMESTAMPTZ",
     ]
     if _db.engine.dialect.name == "sqlite":
         # SQLite supports ADD COLUMN but not PostgreSQL's IF NOT EXISTS.
         # Only issue an ALTER for columns absent from an existing database.
         from sqlalchemy import inspect
         columns = {table: {c["name"] for c in inspect(_db.engine).get_columns(table)}
-                   for table in ("students", "attendance", "unknown_faces", "teachers", "student_attendance", "teacher_attendance", "student_time_rules", "teacher_time_rules")}
+                   for table in ("students", "attendance", "unknown_faces", "teachers", "student_attendance", "teacher_attendance", "student_time_rules", "teacher_time_rules", "auth_tokens")}
         sqlite_columns = {
             "students": [("class_name", "VARCHAR(80)"), ("section", "VARCHAR(40)"), ("mobile", "VARCHAR(20)"), ("email", "VARCHAR(120)"), ("photo_path", "VARCHAR(255)"), ("encoding", "JSON"), ("extra_encodings", "JSON"), ("is_active", "BOOLEAN NOT NULL DEFAULT 1"), ("created_at", "DATETIME")],
             "attendance": [("event_type", "VARCHAR(8) NOT NULL DEFAULT 'in'"), ("session_id", "INTEGER"), ("manual_edit", "BOOLEAN NOT NULL DEFAULT 0"), ("edit_reason", "VARCHAR(255)")],
@@ -181,6 +186,7 @@ def ensure_schema_compat() -> None:
             "teacher_attendance": [("working_seconds", "INTEGER NOT NULL DEFAULT 0")],
             "student_time_rules": [("in_end_time", "VARCHAR(5) NOT NULL DEFAULT '09:30'"), ("out_detection_start", "VARCHAR(5) NOT NULL DEFAULT '16:00'"), ("early_exit_time", "VARCHAR(5) NOT NULL DEFAULT '16:30'"), ("overtime_start", "VARCHAR(5) NOT NULL DEFAULT '17:00'")],
             "teacher_time_rules": [("in_end_time", "VARCHAR(5) NOT NULL DEFAULT '09:30'"), ("out_detection_start", "VARCHAR(5) NOT NULL DEFAULT '16:00'"), ("early_exit_time", "VARCHAR(5) NOT NULL DEFAULT '16:30'"), ("overtime_start", "VARCHAR(5) NOT NULL DEFAULT '17:00'")],
+            "auth_tokens": [("verification_code_hash", "VARCHAR(64)"), ("verification_code_expires_at", "DATETIME"), ("verification_attempts", "INTEGER NOT NULL DEFAULT 0"), ("verification_code_used_at", "DATETIME")],
         }
         for table, definitions in sqlite_columns.items():
             for column, definition in definitions:

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enter verification code · KRISHNA PAYROLL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    .code-inputs { display: flex; gap: 8px; justify-content: center; margin: 24px 0; }
+    .code-input { width: 48px; height: 56px; font-size: 24px; text-align: center; border: 2px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace; font-weight: 600; }
+    .code-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+    .code-input.filled { border-color: var(--primary); }
+    .code-input.error { border-color: var(--danger); }
+    .resend-timer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 16px; }
+    .auth-option-link { display: inline-flex; align-items: center; gap: 8px; color: var(--primary); text-decoration: none; font-weight: 500; margin-top: 16px; }
+    .auth-option-link:hover { text-decoration: underline; }
+    .auth-options { text-align: center; margin: 16px 0; }
+  </style>
+</head>
+<body class="auth-page">
+  <main class="auth-shell" aria-labelledby="verify-code-title">
+    <div class="auth-orb auth-orb-one" aria-hidden="true"></div><div class="auth-orb auth-orb-two" aria-hidden="true"></div>
+    <section class="auth-card auth-card-login">
+      <div class="auth-brand"><div class="auth-mark" aria-hidden="true">KP</div><div><p class="auth-brand-name">KRISHNA <span>PAYROLL</span></p><p class="auth-brand-sub">Enterprise Payroll & HR Management System</p></div></div>
+      <header class="auth-heading">
+        <h1 id="verify-code-title">Verify your email</h1>
+        <p>We've sent a 6-digit verification code to <strong>{{ email }}</strong></p>
+      </header>
+      
+      {% if error %}
+      <div class="auth-error" role="alert">{{ error }}</div>
+      {% endif %}
+      
+      <form method="post" action="{{ url_for('auth.verify_code') }}" class="auth-form" id="verify-code-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="email" value="{{ email }}">
+        
+        <div class="code-inputs" role="group" aria-label="6-digit verification code">
+          <input type="text" name="code_0" class="code-input" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required aria-label="Digit 1">
+          <input type="text" name="code_1" class="code-input" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required aria-label="Digit 2">
+          <input type="text" name="code_2" class="code-input" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required aria-label="Digit 3">
+          <input type="text" name="code_3" class="code-input" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required aria-label="Digit 4">
+          <input type="text" name="code_4" class="code-input" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required aria-label="Digit 5">
+          <input type="text" name="code_5" class="code-input" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required aria-label="Digit 6">
+        </div>
+        
+        <input type="hidden" name="code" id="code-combined" value="">
+        
+        <button class="auth-submit" type="submit">Verify Code</button>
+      </form>
+      
+      <div class="resend-timer" id="resend-timer">
+        <button type="button" class="auth-option-link" id="resend-btn" onclick="resendCode()" disabled>
+          Resend code in <span id="countdown">60</span>s
+        </button>
+      </div>
+      
+      <div class="auth-options">
+        <a href="{{ url_for('auth.verify_required', email=email) }}" class="auth-option-link">
+          <span class="auth-option-icon">🔗</span>
+          <span>Use verification link instead</span>
+        </a>
+      </div>
+      
+      <p class="auth-signup"><a href="{{ url_for('auth.login') }}">Back to sign in</a></p>
+      <footer class="auth-legal"><span>Secure & Protected</span></footer>
+    </section>
+  </main>
+  <script src="{{ url_for('static', filename='auth.js') }}" defer></script>
+  <script>
+    // Auto-focus and auto-advance for code inputs
+    document.addEventListener('DOMContentLoaded', function() {
+      const inputs = document.querySelectorAll('.code-input');
+      const form = document.getElementById('verify-code-form');
+      const combinedInput = document.getElementById('code-combined');
+      
+      // Focus first input
+      if (inputs[0]) inputs[0].focus();
+      
+      inputs.forEach((input, index) => {
+        input.addEventListener('input', function(e) {
+          // Only allow digits
+          this.value = this.value.replace(/[^0-9]/g, '');
+          
+          // Update combined value
+          updateCombinedCode();
+          
+          // Auto-advance to next input
+          if (this.value && index < inputs.length - 1) {
+            inputs[index + 1].focus();
+          }
+          
+          // Mark as filled
+          if (this.value) {
+            this.classList.add('filled');
+          } else {
+            this.classList.remove('filled');
+          }
+        });
+        
+        input.addEventListener('keydown', function(e) {
+          // Handle backspace to go back
+          if (e.key === 'Backspace' && !this.value && index > 0) {
+            inputs[index - 1].focus();
+          }
+          // Handle paste
+          if (e.key === 'v' && (e.ctrlKey || e.metaKey)) {
+            setTimeout(() => {
+              updateCombinedCode();
+              // Focus last input after paste
+              inputs[inputs.length - 1].focus();
+            }, 0);
+          }
+        });
+        
+        input.addEventListener('paste', function(e) {
+          e.preventDefault();
+          const paste = (e.clipboardData || window.clipboardData).getData('text');
+          const digits = paste.replace(/[^0-9]/g, '').slice(0, inputs.length - index);
+          digits.split('').forEach((digit, i) => {
+            if (inputs[index + i]) {
+              inputs[index + i].value = digit;
+              inputs[index + i].classList.add('filled');
+            }
+          });
+          updateCombinedCode();
+          // Focus the next empty input or last
+          const nextEmpty = Array.from(inputs).find((inp, i) => i >= index && !inp.value);
+          (nextEmpty || inputs[inputs.length - 1]).focus();
+        });
+      });
+      
+      function updateCombinedCode() {
+        const code = Array.from(inputs).map(inp => inp.value).join('');
+        combinedInput.value = code;
+      }
+      
+      // Form submission validation
+      form.addEventListener('submit', function(e) {
+        const code = combinedInput.value;
+        if (code.length !== 6) {
+          e.preventDefault();
+          inputs.forEach(inp => inp.classList.add('error'));
+          setTimeout(() => inputs.forEach(inp => inp.classList.remove('error')), 1000);
+          inputs[0].focus();
+        }
+      });
+      
+      // Resend countdown
+      let countdown = 60;
+      const countdownEl = document.getElementById('countdown');
+      const resendBtn = document.getElementById('resend-btn');
+      
+      const timer = setInterval(() => {
+        countdown--;
+        if (countdownEl) countdownEl.textContent = countdown;
+        if (countdown <= 0) {
+          clearInterval(timer);
+          if (resendBtn) {
+            resendBtn.disabled = false;
+            resendBtn.innerHTML = 'Resend code';
+          }
+        }
+      }, 1000);
+      
+      function resendCode() {
+        if (resendBtn.disabled) return;
+        // Submit the resend form
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{{ url_for("auth.resend_verification") }}';
+        const csrf = document.createElement('input');
+        csrf.type = 'hidden';
+        csrf.name = 'csrf_token';
+        csrf.value = '{{ csrf_token() }}';
+        const emailInput = document.createElement('input');
+        emailInput.type = 'hidden';
+        emailInput.name = 'email';
+        emailInput.value = '{{ email }}';
+        form.appendChild(csrf);
+        form.appendChild(emailInput);
+        document.body.appendChild(form);
+        form.submit();
+      }
+    });
+  </script>
+</body>
+</html>

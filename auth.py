@@ -22,6 +22,9 @@ from database.db import db
 
 logger = logging.getLogger(__name__)
 
+# Configuration constants for verification code
+VERIFICATION_CODE_LENGTH = 6
+
 bp = Blueprint("auth", __name__)
 oauth = OAuth()
 ph = PasswordHasher()
@@ -374,7 +377,7 @@ def load_and_protect():
     endpoint = request.endpoint or ""
     public = {
         "auth.login", "auth.signup", "auth.forgot_password", "auth.reset_password",
-        "auth.verify_email", "auth.resend_verification",
+        "auth.verify_email", "auth.resend_verification", "auth.verify_code",
         "auth.oauth_google", "auth.oauth_google_callback",
         "auth.oauth_microsoft", "auth.oauth_microsoft_callback",
         "auth.oauth_apple", "auth.oauth_apple_callback",
@@ -385,6 +388,16 @@ def load_and_protect():
         return None
     if not g.user:
         return _json_error("authentication required", 401) if request.path.startswith("/api/") else redirect(url_for("auth.login", next=request.full_path))
+    
+    # Check email verification - unverified users cannot access protected pages
+    if not g.user.email_verified_at:
+        # Log the blocked access attempt
+        _event(g.user.email, "unverified_access_blocked", g.user)
+        db.session.commit()
+        # Clear the session since unverified users shouldn't have authenticated access
+        _clear_login()
+        return _json_error("email verification required", 403) if request.path.startswith("/api/") else redirect(url_for("auth.verify_code", email=g.user.email))
+
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         if not _valid_csrf():
             return _json_error("invalid CSRF token", 400)
@@ -447,6 +460,233 @@ def _create_verification_token(user: User) -> str:
     return raw
 
 
+def _generate_verification_code() -> str:
+    """Generate a cryptographically secure 6-digit numeric code."""
+    return "".join(str(secrets.randbelow(10)) for _ in range(VERIFICATION_CODE_LENGTH))
+
+
+def _send_verification_email_with_code(user: User, raw_token: str, code: str) -> None:
+    """Send a verification email with both link and 6-digit code via SMTP."""
+    verify_url = url_for("auth.verify_email", token=raw_token, _external=True)
+    code_expiry_minutes = current_app.config["AUTH_VERIFICATION_CODE_TTL_MINUTES"]
+    
+    if current_app.config.get("SMTP_HOST") and current_app.config.get("SMTP_USERNAME"):
+        try:
+            # Render both text and HTML versions
+            text_body = render_template(
+                "auth/verify_email.txt",
+                name=user.name,
+                url=verify_url,
+                code=code,
+                code_expiry_minutes=code_expiry_minutes,
+            )
+            html_body = render_template(
+                "auth/verify_email.html",
+                name=user.name,
+                url=verify_url,
+                code=code,
+                code_expiry_minutes=code_expiry_minutes,
+            )
+            
+            msg = MIMEText(html_body, "html")
+            msg["Subject"] = "Verify your email — KRISHNA PAYROLL"
+            msg["From"] = current_app.config.get("SMTP_FROM", current_app.config["SMTP_USERNAME"])
+            msg["To"] = user.email
+            
+            with SMTP(current_app.config["SMTP_HOST"], current_app.config["SMTP_PORT"]) as s:
+                s.starttls()
+                s.login(current_app.config["SMTP_USERNAME"], current_app.config["SMTP_PASSWORD"])
+                s.send_message(msg)
+            logger.info("Verification email sent to %s", user.email)
+        except Exception:
+            logger.exception("Failed to send verification email to %s", user.email)
+    elif current_app.debug:
+        logger.info("DEBUG verification link for %s: %s", user.email, verify_url)
+        logger.info("DEBUG verification code for %s: %s", user.email, code)
+    else:
+        logger.warning("SMTP not configured; verification email for %s not sent", user.email)
+
+
+def _create_verification_token_and_code(user: User) -> tuple[str, str]:
+    """Create a single-use verification token and 6-digit code, store both, send email. Returns (raw_token, code)."""
+    # Invalidate previous unused tokens
+    AuthToken.query.filter_by(user_id=user.id, purpose="verify", used_at=None).update({"used_at": utcnow()})
+    
+    raw_token = secrets.token_urlsafe(48)
+    code = _generate_verification_code()
+    code_hash = _hash(code)
+    
+    hours = current_app.config["AUTH_VERIFICATION_HOURS"]
+    code_expires_at = utcnow() + timedelta(minutes=current_app.config["AUTH_VERIFICATION_CODE_TTL_MINUTES"])
+    
+    token = AuthToken(
+        token_hash=_hash(raw_token),
+        user_id=user.id,
+        purpose="verify",
+        expires_at=utcnow() + timedelta(hours=hours),
+        verification_code_hash=code_hash,
+        verification_code_expires_at=code_expires_at,
+        verification_attempts=0,
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    _send_verification_email_with_code(user, raw_token, code)
+    return raw_token, code
+
+
+def _verify_code(user: User, code: str) -> tuple[bool, str]:
+    """
+    Verify a 6-digit code for a user.
+    Returns (success, message).
+    """
+    # Find the latest unused verification token for this user
+    token = AuthToken.query.filter_by(
+        user_id=user.id, purpose="verify", used_at=None
+    ).order_by(AuthToken.id.desc()).first()
+    
+    if not token:
+        return False, "No verification pending. Please request a new code."
+    
+    if user.email_verified_at:
+        return True, "Email already verified."
+    
+    # Check if code has expired
+    if token.verification_code_expires_at and token.verification_code_expires_at <= utcnow():
+        return False, "Verification code has expired. Please request a new code."
+    
+    # Check max attempts
+    max_attempts = current_app.config["AUTH_MAX_VERIFICATION_ATTEMPTS"]
+    if token.verification_attempts >= max_attempts:
+        return False, "Too many failed attempts. Please request a new code."
+    
+    # Verify code
+    if not token.verification_code_hash or not secrets.compare_digest(token.verification_code_hash, _hash(code)):
+        token.verification_attempts += 1
+        db.session.commit()
+        remaining = max_attempts - token.verification_attempts
+        if remaining > 0:
+            return False, f"Invalid verification code. {remaining} attempts remaining."
+        else:
+            return False, "Too many failed attempts. Please request a new code."
+    
+    # Code is valid - mark as used
+    token.verification_code_used_at = utcnow()
+    token.used_at = utcnow()  # Also invalidate the token
+    user.email_verified_at = utcnow()
+    db.session.commit()
+    
+    return True, "Email verified successfully."
+
+
+def _resend_verification(user: User) -> tuple[bool, str]:
+    """
+    Resend verification email with new token and code.
+    Returns (success, message).
+    """
+    # Check cooldown
+    cooldown = current_app.config["AUTH_VERIFICATION_RESEND_COOLDOWN_SECONDS"]
+    recent_resend = LoginEvent.query.filter(
+        LoginEvent.event == "verification_resent",
+        LoginEvent.user_id == user.id,
+        LoginEvent.created_at >= utcnow() - timedelta(seconds=cooldown),
+    ).first()
+    
+    if recent_resend:
+        return False, f"Please wait {cooldown} seconds before requesting a new code."
+    
+    # Create new token and code (invalidates old ones)
+    _create_verification_token_and_code(user)
+    
+    # Log the resend event
+    _event(user.email, "verification_resent", user)
+    db.session.commit()
+    
+    return True, "Verification email sent."
+
+
+# ---------------------------------------------------------------------------
+# Routes — Email verification (Link)
+# ---------------------------------------------------------------------------
+
+@bp.route("/verify-email/<token>", methods=["GET"])
+def verify_email(token: str):
+    row = AuthToken.query.filter_by(token_hash=_hash(token), purpose="verify", used_at=None).first()
+    if not row or row.expires_at <= utcnow():
+        return render_template("auth/login.html", error="This verification link is invalid or has expired.")
+    user = db.session.get(User, row.user_id)
+    if not user:
+        return render_template("auth/login.html", error="This verification link is invalid or has expired.")
+    
+    if user.email_verified_at:
+        return render_template("auth/login.html", verified="Email already verified. You may now sign in.")
+    
+    row.used_at = utcnow()
+    # Also invalidate the code
+    row.verification_code_used_at = utcnow()
+    user.email_verified_at = utcnow()
+    db.session.commit()
+    return render_template("auth/login.html", verified="Your email has been verified. You may now sign in.")
+
+
+# ---------------------------------------------------------------------------
+# Routes — Email verification (Code)
+# ---------------------------------------------------------------------------
+
+@bp.route("/verify-code", methods=["GET", "POST"])
+def verify_code():
+    if request.method == "POST":
+        if not _valid_csrf():
+            return render_template("auth/verify_code.html", error="Your form expired. Please try again."), 400
+        
+        email = (request.form.get("email") or "").strip().lower()
+        code = (request.form.get("code") or "").strip()
+        
+        if not email or not code:
+            return render_template("auth/verify_code.html", error="Please enter the verification code."), 400
+        
+        if not re.fullmatch(r"\d{6}", code):
+            return render_template("auth/verify_code.html", error="Please enter a valid 6-digit code."), 400
+        
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            # Don't reveal if user exists
+            return render_template("auth/verify_code.html", error="Invalid verification code."), 400
+        
+        if user.email_verified_at:
+            return render_template("auth/login.html", verified="Email already verified. You may now sign in.")
+        
+        success, message = _verify_code(user, code)
+        if success:
+            return render_template("auth/login.html", verified=message)
+        else:
+            return render_template("auth/verify_code.html", error=message, email=email), 400
+    
+    # GET request - show the code entry page
+    email = request.args.get("email", "")
+    return render_template("auth/verify_code.html", email=email)
+
+
+# ---------------------------------------------------------------------------
+# Routes — Resend verification
+# ---------------------------------------------------------------------------
+
+@bp.route("/resend-verification", methods=["GET", "POST"])
+def resend_verification():
+    if request.method == "POST":
+        if not _valid_csrf():
+            return render_template("auth/login.html", error="Your form expired. Please try again."), 400
+        email = (request.form.get("email") or "").strip().lower()
+        user = User.query.filter_by(email=email).first()
+        if user and not user.email_verified_at:
+            success, message = _resend_verification(user)
+            if not success:
+                return render_template("auth/login.html", verified=message)
+        # Always return the same message to avoid leaking account existence
+        return render_template("auth/login.html", verified="If an account exists with that email, a new verification email has been sent.")
+    return redirect(url_for("auth.login"))
+
+
 # ---------------------------------------------------------------------------
 # Routes — Login
 # ---------------------------------------------------------------------------
@@ -478,8 +718,10 @@ def login():
             return render_template("auth/login.html", error="Too many attempts. Please try again later."), 429
         if not user.email_verified_at:
             _event(email, "login_denied", user)
+            # Create/send verification token and code if not already sent
+            _create_verification_token_and_code(user)
             db.session.commit()
-            return render_template("auth/login.html", error="Please verify your email before logging in.", unverified_email=email), 403
+            return redirect(url_for("auth.verify_code", email=email))
         try:
             valid = ph.verify(user.password_hash, request.form.get("password") or "")
         except (VerifyMismatchError, VerificationError, InvalidHashError):
@@ -520,8 +762,8 @@ def signup():
         db.session.flush()
         _event(email, "signup", user)
         db.session.commit()
-        # Send verification email — do NOT issue session
-        _create_verification_token(user)
+        # Send verification email with both link and code — do NOT issue session
+        _create_verification_token_and_code(user)
         return render_template("auth/verify_required.html", email=email)
     return render_template("auth/signup.html")
 
@@ -529,42 +771,6 @@ def signup():
 # ---------------------------------------------------------------------------
 # Routes — Email verification
 # ---------------------------------------------------------------------------
-
-@bp.route("/verify-email/<token>", methods=["GET"])
-def verify_email(token: str):
-    row = AuthToken.query.filter_by(token_hash=_hash(token), purpose="verify", used_at=None).first()
-    if not row or row.expires_at <= utcnow():
-        return render_template("auth/login.html", error="This verification link is invalid or has expired.")
-    user = db.session.get(User, row.user_id)
-    if not user:
-        return render_template("auth/login.html", error="This verification link is invalid or has expired.")
-    row.used_at = utcnow()
-    user.email_verified_at = utcnow()
-    db.session.commit()
-    return render_template("auth/login.html", verified="Your email has been verified. You may now sign in.")
-
-
-@bp.route("/resend-verification", methods=["GET", "POST"])
-def resend_verification():
-    if request.method == "POST":
-        if not _valid_csrf():
-            return render_template("auth/login.html", error="Your form expired. Please try again."), 400
-        email = (request.form.get("email") or "").strip().lower()
-        user = User.query.filter_by(email=email).first()
-        if user and not user.email_verified_at:
-            # Rate-limit: at most 3 resend attempts per hour
-            cutoff = utcnow() - timedelta(hours=1)
-            sends = LoginEvent.query.filter(
-                LoginEvent.event == "verification_resent", LoginEvent.user_id == user.id, LoginEvent.created_at >= cutoff,
-            ).count()
-            if sends < 3:
-                _create_verification_token(user)
-                _event(email, "verification_resent", user)
-                db.session.commit()
-        # Always return the same message to avoid leaking account existence
-        return render_template("auth/login.html", verified="If an account exists with that email, a new verification link has been sent.")
-    return redirect(url_for("auth.login"))
-
 
 # ---------------------------------------------------------------------------
 # Routes — Forgot / Reset password

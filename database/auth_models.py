@@ -61,6 +61,11 @@ class AuthToken(db.Model):
     purpose = db.Column(db.String(32), nullable=False, index=True)
     expires_at = db.Column(UTCDateTime(), nullable=False)
     used_at = db.Column(UTCDateTime())
+    # New fields for 6-digit verification code
+    verification_code_hash = db.Column(db.String(64), nullable=True, index=True)
+    verification_code_expires_at = db.Column(UTCDateTime(), nullable=True)
+    verification_attempts = db.Column(db.Integer, nullable=False, default=0)
+    verification_code_used_at = db.Column(UTCDateTime(), nullable=True)
 
 class OAuthIdentity(db.Model):
     __tablename__ = "auth_oauth_identities"
