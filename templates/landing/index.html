@@ -82,30 +82,36 @@
             <div class="stat-icon blue"><i data-lucide="users"></i></div>
             <div class="stat-body">
               <div class="stat-label">Total Students</div>
-              <div class="stat-value">--</div>
+              <div class="stat-value">1,248</div>
             </div>
           </div>
           <div class="landing-hero-tile">
             <div class="stat-icon green"><i data-lucide="calendar-check"></i></div>
             <div class="stat-body">
               <div class="stat-label">Present Today</div>
-              <div class="stat-value">--</div>
+              <div class="stat-value">1,186</div>
             </div>
           </div>
           <div class="landing-hero-tile">
             <div class="stat-icon red"><i data-lucide="user-x"></i></div>
             <div class="stat-body">
-              <div class="stat-label">Absent</div>
-              <div class="stat-value">--</div>
+              <div class="stat-label">Absent Today</div>
+              <div class="stat-value">62</div>
             </div>
           </div>
           <div class="landing-hero-tile">
             <div class="stat-icon purple"><i data-lucide="video"></i></div>
             <div class="stat-body">
               <div class="stat-label">Active Cameras</div>
-              <div class="stat-value">--</div>
+              <div class="stat-value">8/8</div>
             </div>
           </div>
+        </div>
+        <div style="margin-top: 14px; padding: 10px 14px; background: rgba(255,255,255,0.75); border: 1px solid var(--border); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem;">
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #15803D;">
+            <i data-lucide="scan-face" style="width:16px;height:16px;"></i> Last Recognition: Rahul Sharma (0.94)
+          </span>
+          <span class="muted small">Just now · Gate 1</span>
         </div>
       </div>
     </div>
@@ -114,12 +120,10 @@
   <!-- ============== PRODUCT INTRO ============== -->
   <section class="landing-section">
     <div class="landing-section-inner landing-intro">
-      <span class="eyebrow">AttendanceOS</span>
-      <h2>Built for modern school operations.</h2>
+      <span class="eyebrow">AttendanceOS & Krishna HR</span>
+      <h2>Built for modern institutional operations.</h2>
       <p>
-        AttendanceOS brings attendance, student and teacher management, live camera monitoring,
-        attendance tracking, IN/OUT records, reporting and multi-camera operations into one connected
-        system — designed to keep everyday school operations running smoothly.
+        An integrated platform bringing face recognition attendance, student & teacher directories, live multi-camera monitoring, IN/OUT records, HR operations, leave management, automated payroll and compliance reporting into one unified system.
       </p>
     </div>
   </section>
@@ -173,21 +177,25 @@
               <i data-lucide="briefcase"></i>
             </div>
             <div>
-              <h3>HR Management</h3>
-              <span class="badge warn">Next Module</span>
+              <h3>HR & Payroll Management</h3>
+              <span class="badge ok">Available Now</span>
             </div>
           </div>
           <p>
-            An upcoming workforce-management module designed to extend the platform into employee
-            and HR operations.
+            A complete workforce operations and enterprise HR management engine covering employee lifecycle, department structures, leave management, automated payroll calculations, salary structures, shift assignments, and compliance records.
           </p>
-          <ul class="landing-feature-list landing-feature-list-muted">
-            <li><i data-lucide="clock"></i> Coming soon</li>
-            <li><i data-lucide="users"></i> Workforce operations</li>
-            <li><i data-lucide="layers"></i> Built on the same platform</li>
+          <ul class="landing-feature-list">
+            <li><i data-lucide="check"></i> Employee Lifecycle & Records</li>
+            <li><i data-lucide="check"></i> Department & Designation Hierarchy</li>
+            <li><i data-lucide="check"></i> Leave Requests & Balances</li>
+            <li><i data-lucide="check"></i> Automated Payroll & Salary Structures</li>
+            <li><i data-lucide="check"></i> Shift & Overtime Rules</li>
+            <li><i data-lucide="check"></i> Teacher-to-Employee Sync</li>
+            <li><i data-lucide="check"></i> Salary Progression & Rollover</li>
+            <li><i data-lucide="check"></i> Payslip Generation</li>
           </ul>
-          <a href="/hr" class="btn-secondary landing-solution-cta">
-            View HR Preview
+          <a href="{{ url_for('page_hr_dashboard') }}" class="btn-primary landing-solution-cta">
+            Open HR Management
             <i data-lucide="arrow-right"></i>
           </a>
         </article>
@@ -218,22 +226,22 @@
         <article class="landing-cap-card glass">
           <div class="landing-cap-icon"><i data-lucide="layers"></i></div>
           <h3>Modular</h3>
-          <p>Attendance, people management, cameras and reporting connect as one platform.</p>
+          <p>Attendance, people management, cameras, HR and reporting connect as one unified platform.</p>
         </article>
         <article class="landing-cap-card glass">
           <div class="landing-cap-icon"><i data-lucide="gauge"></i></div>
           <h3>Performance-Minded</h3>
-          <p>Built to handle multi-camera monitoring and concurrent attendance without lag.</p>
+          <p>Built to handle multi-camera monitoring and concurrent attendance with low latency.</p>
         </article>
         <article class="landing-cap-card glass">
           <div class="landing-cap-icon"><i data-lucide="shield-check"></i></div>
           <h3>Security-Focused</h3>
-          <p>Authentication and access controls protect operational data and user sessions.</p>
+          <p>Argon2id authentication, session encryption, and role-based permissions protect enterprise data.</p>
         </article>
         <article class="landing-cap-card glass">
           <div class="landing-cap-icon"><i data-lucide="puzzle"></i></div>
-          <h3>Extensible</h3>
-          <p>New modules like HR can be added on top of the same connected operations platform.</p>
+          <h3>Unified & Extensible</h3>
+          <p>AttendanceOS and Krishna HR operate on the same connected database and shared enterprise architecture.</p>
         </article>
       </div>
     </div>
@@ -242,18 +250,18 @@
   <!-- ============== ATTENDANCEOS VISUAL PREVIEW ============== -->
   <section class="landing-section">
     <div class="landing-section-inner">
-      <div class="landing-section-head">
-        <span class="eyebrow">Product Preview</span>
-        <h2>A look at the AttendanceOS workspace.</h2>
-        <p>A conceptual preview of the dashboard. No live data is shown here.</p>
+      <div class="landing-section-head" style="text-align: center; margin: 0 auto 34px;">
+        <span class="eyebrow">Product Workspace</span>
+        <h2>A look inside AttendanceOS & Krishna HR.</h2>
+        <p>Real-time face recognition, live camera monitoring, and connected attendance analytics.</p>
       </div>
 
-      <div class="landing-preview glass">
+      <div class="landing-preview glass" style="max-width: 1140px; margin: 0 auto; width: 100%;">
         <div class="landing-preview-bar">
           <div class="landing-preview-dots">
             <span></span><span></span><span></span>
           </div>
-          <div class="landing-preview-title">AttendanceOS · Dashboard</div>
+          <div class="landing-preview-title">AttendanceOS · Enterprise Operations Workspace</div>
         </div>
         <div class="landing-preview-body">
           <div class="landing-preview-stats">
@@ -261,62 +269,167 @@
               <div class="stat-icon blue"><i data-lucide="users"></i></div>
               <div class="stat-body">
                 <div class="stat-label">Total Students</div>
-                <div class="stat-value">--</div>
-                <div class="stat-trend">across school</div>
+                <div class="stat-value">1,248</div>
+                <div class="stat-trend">across 12 classes</div>
               </div>
             </div>
             <div class="stat-card glass">
               <div class="stat-icon green"><i data-lucide="calendar-check"></i></div>
               <div class="stat-body">
                 <div class="stat-label">Present Today</div>
-                <div class="stat-value">--</div>
-                <div class="stat-trend">live</div>
+                <div class="stat-value">1,186</div>
+                <div class="stat-trend">95.0% on campus</div>
               </div>
             </div>
             <div class="stat-card glass">
               <div class="stat-icon red"><i data-lucide="user-x"></i></div>
               <div class="stat-body">
-                <div class="stat-label">Absent</div>
-                <div class="stat-value">--</div>
-                <div class="stat-trend">today</div>
+                <div class="stat-label">Absent Today</div>
+                <div class="stat-value">62</div>
+                <div class="stat-trend">auto-calculated</div>
               </div>
             </div>
             <div class="stat-card glass">
               <div class="stat-icon purple"><i data-lucide="video"></i></div>
               <div class="stat-body">
                 <div class="stat-label">Active Cameras</div>
-                <div class="stat-value">--</div>
-                <div class="stat-trend">live feeds</div>
+                <div class="stat-value">8/8</div>
+                <div class="stat-trend">100% operational</div>
               </div>
             </div>
           </div>
           <div class="landing-preview-panels">
             <div class="landing-preview-panel glass">
-              <div class="card-head">
+              <div class="card-head" style="display: flex; align-items: center; justify-content: space-between;">
                 <h2>Live Camera Feeds</h2>
-                <span class="badge muted">Preview</span>
+                <span class="badge ok">8 Cameras Active</span>
               </div>
               <div class="landing-preview-cam-grid">
-                <div class="landing-preview-cam"></div>
-                <div class="landing-preview-cam"></div>
-                <div class="landing-preview-cam"></div>
-                <div class="landing-preview-cam"></div>
+                <!-- Cam 1 -->
+                <div class="landing-preview-cam">
+                  <div class="landing-cam-header">
+                    <span class="landing-cam-name">Gate 1 · Main Entrance</span>
+                    <span class="landing-cam-live">LIVE</span>
+                  </div>
+                  <div class="landing-cam-body">
+                    <div class="landing-cam-box">
+                      <span class="landing-cam-box-name">Rahul Sharma</span>
+                      <span class="landing-cam-box-score">Match 0.94 · Class 10-A</span>
+                    </div>
+                  </div>
+                  <div class="landing-cam-footer">
+                    <span>CAM-01</span>
+                    <span>10:42:18 AM</span>
+                    <span>25 FPS</span>
+                  </div>
+                </div>
+                <!-- Cam 2 -->
+                <div class="landing-preview-cam">
+                  <div class="landing-cam-header">
+                    <span class="landing-cam-name">Corridor A · North Wing</span>
+                    <span class="landing-cam-live">LIVE</span>
+                  </div>
+                  <div class="landing-cam-body">
+                    <div class="landing-cam-box">
+                      <span class="landing-cam-box-name">Priya Patel</span>
+                      <span class="landing-cam-box-score">Match 0.91 · Class 12-B</span>
+                    </div>
+                  </div>
+                  <div class="landing-cam-footer">
+                    <span>CAM-02</span>
+                    <span>10:42:18 AM</span>
+                    <span>25 FPS</span>
+                  </div>
+                </div>
+                <!-- Cam 3 -->
+                <div class="landing-preview-cam">
+                  <div class="landing-cam-header">
+                    <span class="landing-cam-name">Staff Gate · Faculty Wing</span>
+                    <span class="landing-cam-live">LIVE</span>
+                  </div>
+                  <div class="landing-cam-body">
+                    <div class="landing-cam-box">
+                      <span class="landing-cam-box-name">Dr. S. K. Verma</span>
+                      <span class="landing-cam-box-score">Faculty · Math Dept</span>
+                    </div>
+                  </div>
+                  <div class="landing-cam-footer">
+                    <span>CAM-03</span>
+                    <span>10:42:17 AM</span>
+                    <span>30 FPS</span>
+                  </div>
+                </div>
+                <!-- Cam 4 -->
+                <div class="landing-preview-cam">
+                  <div class="landing-cam-header">
+                    <span class="landing-cam-name">Auditorium Entrance</span>
+                    <span class="landing-cam-live">LIVE</span>
+                  </div>
+                  <div class="landing-cam-body">
+                    <div style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 4px; border: 1px dashed rgba(255,255,255,0.25); color: #94A3B8; font-size: 0.72rem; background: rgba(0,0,0,0.3);">
+                      <i data-lucide="scan" style="width:14px;height:14px;color:#C6A15B;"></i> Scanning Area...
+                    </div>
+                  </div>
+                  <div class="landing-cam-footer">
+                    <span>CAM-04</span>
+                    <span>10:42:18 AM</span>
+                    <span>30 FPS</span>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="landing-preview-panel glass">
-              <div class="card-head">
+              <div class="card-head" style="display: flex; align-items: center; justify-content: space-between;">
                 <h2>Today's Attendance</h2>
-                <span class="badge muted">Preview</span>
+                <span class="badge blue">Live Activity</span>
               </div>
               <div class="table-scroll">
                 <table>
                   <thead>
-                    <tr><th>Time</th><th>Name</th><th>Class</th><th>Camera</th></tr>
+                    <tr>
+                      <th>Time</th>
+                      <th>Name</th>
+                      <th>Class / Role</th>
+                      <th>Camera</th>
+                      <th>Status</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    <tr><td>--</td><td>--</td><td>--</td><td>--</td></tr>
-                    <tr><td>--</td><td>--</td><td>--</td><td>--</td></tr>
-                    <tr><td>--</td><td>--</td><td>--</td><td>--</td></tr>
+                    <tr>
+                      <td><span style="font-family:'SF Mono',monospace; font-size:0.78rem; color:#475569;">08:35 AM</span></td>
+                      <td><strong>Aarav Sharma</strong></td>
+                      <td>Class 10-A</td>
+                      <td>Gate 1 · Main</td>
+                      <td><span class="badge ok">Present</span></td>
+                    </tr>
+                    <tr>
+                      <td><span style="font-family:'SF Mono',monospace; font-size:0.78rem; color:#475569;">08:41 AM</span></td>
+                      <td><strong>Ananya Iyer</strong></td>
+                      <td>Class 12-B</td>
+                      <td>Gate 1 · Main</td>
+                      <td><span class="badge ok">Present</span></td>
+                    </tr>
+                    <tr>
+                      <td><span style="font-family:'SF Mono',monospace; font-size:0.78rem; color:#475569;">08:48 AM</span></td>
+                      <td><strong>Rohan Mehta</strong></td>
+                      <td>Class 9-A</td>
+                      <td>North Wing</td>
+                      <td><span class="badge ok">Present</span></td>
+                    </tr>
+                    <tr>
+                      <td><span style="font-family:'SF Mono',monospace; font-size:0.78rem; color:#475569;">08:52 AM</span></td>
+                      <td><strong>Dr. S. K. Verma</strong></td>
+                      <td>Faculty (Math)</td>
+                      <td>Staff Gate</td>
+                      <td><span class="badge ok">Present</span></td>
+                    </tr>
+                    <tr>
+                      <td><span style="font-family:'SF Mono',monospace; font-size:0.78rem; color:#475569;">08:56 AM</span></td>
+                      <td><strong>Pooja Joshi</strong></td>
+                      <td>Class 11-A</td>
+                      <td>Auditorium</td>
+                      <td><span class="badge ok">Present</span></td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

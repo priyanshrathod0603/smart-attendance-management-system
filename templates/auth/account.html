@@ -1,15 +1,239 @@
 {% extends "base.html" %}
-{% block title %}Account · KRISHNA PAYROLL{% endblock %}
+{% block title %}Account Profile · KRISHNA PAYROLL{% endblock %}
+{% block crumbs %}
+  <i data-lucide="user"></i><span>Account</span>
+  <i data-lucide="chevron-right" class="nav-chevron"></i>
+  <span>{% if section == 'sessions' %}Active Sessions{% elif section == 'profile' %}Profile{% else %}Security & Password{% endif %}</span>
+{% endblock %}
+
 {% block content %}
-<section class="page-head"><div><p class="eyebrow">Account</p><h1>{% if section == 'sessions' %}Active Sessions{% elif section == 'profile' %}Profile{% else %}Security{% endif %}</h1></div></section>
-<section class="card" style="max-width:720px;padding:24px">
-  {% if error %}<p class="auth-error">{{ error }}</p>{% endif %}
-  {% if section == 'profile' %}
-    <p><strong>{{ current_user.name }}</strong></p><p class="muted">{{ current_user.email }}</p><p class="muted">Role: {{ current_user.role|replace('_', ' ')|title }}</p>
-  {% elif section == 'sessions' %}
-    {% if sessions %}<div class="table-wrap"><table><thead><tr><th>Device</th><th>Last active (UTC)</th><th>Expires (UTC)</th></tr></thead><tbody>{% for item in sessions %}<tr><td>{{ item.device or 'Unknown device' }}</td><td>{{ item.last_seen_at.isoformat() }}</td><td>{{ item.expires_at.isoformat() }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">No active sessions.</p>{% endif %}
+<!-- Profile Header Card -->
+<section class="card glass" style="margin-bottom: 24px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
+    <div style="display: flex; align-items: center; gap: 18px;">
+      <div style="width: 68px; height: 68px; border-radius: var(--radius-full); background: linear-gradient(145deg, #1E293B, #0F172A); border: 2px solid #C6A15B; color: #F7F0E3; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; font-family: 'Playfair Display', Georgia, serif; box-shadow: 0 4px 14px rgba(0,0,0,0.12);">
+        {{ (current_user.name[:2]|upper) if current_user and current_user.name else 'KP' }}
+      </div>
+      <div>
+        <h2 style="margin: 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.5rem; color: var(--accent); letter-spacing: -0.02em;">
+          {{ current_user.name if current_user else 'User Account' }}
+        </h2>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;" class="muted small">
+          <span style="color: #64748B; font-weight: 500;">{{ current_user.email if current_user else '' }}</span>
+          <span>&bull;</span>
+          <span class="badge blue">{{ (current_user.role|replace('_', ' ')|title) if current_user else 'Staff' }}</span>
+          <span class="badge {% if current_user and current_user.is_active %}ok{% else %}danger{% endif %}">
+            {% if current_user and current_user.is_active %}Active{% else %}Inactive{% endif %}
+          </span>
+          {% if current_user and current_user.email_verified_at %}
+          <span class="badge green">Verified</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <a href="{{ url_for('page_dashboard') }}" class="btn-secondary">
+        <i data-lucide="layout-dashboard"></i> Dashboard
+      </a>
+      <a href="{{ url_for('auth.change_password') }}" class="btn-primary">
+        <i data-lucide="key-round"></i> Change Password
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Tabs Navigation -->
+<div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--glass-border); margin-bottom: 22px; padding-bottom: 8px;">
+  <a href="{{ url_for('auth.profile') }}" class="btn-secondary {% if section == 'profile' %}active{% endif %}" style="{% if section == 'profile' %}background: var(--accent); color: white; border-color: var(--accent);{% endif %}">
+    <i data-lucide="user"></i> Personal Profile
+  </a>
+  <a href="{{ url_for('auth.security') }}" class="btn-secondary {% if section == 'security' %}active{% endif %}" style="{% if section == 'security' %}background: var(--accent); color: white; border-color: var(--accent);{% endif %}">
+    <i data-lucide="shield-check"></i> Security
+  </a>
+  <a href="{{ url_for('auth.active_sessions') }}" class="btn-secondary {% if section == 'sessions' %}active{% endif %}" style="{% if section == 'sessions' %}background: var(--accent); color: white; border-color: var(--accent);{% endif %}">
+    <i data-lucide="monitor-smartphone"></i> Active Sessions
+  </a>
+</div>
+
+{% if error %}
+<div class="auth-error" style="margin-bottom: 20px; padding: 14px 18px; border-radius: 10px; background: #FDEDED; border: 1px solid #FCA5A5; color: #B91C1C; font-size: 0.9rem;" role="alert">
+  {{ error }}
+</div>
+{% endif %}
+
+{% if section == 'profile' %}
+<!-- Profile Information Grid -->
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 22px; align-items: start;">
+  <section class="card glass">
+    <div class="card-head" style="display: flex; align-items: center; justify-content: space-between;">
+      <h2>Account Information</h2>
+      <span class="badge muted">System Credentials</span>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; padding: 8px 0;">
+      <div>
+        <div class="filter-field label" style="color: #64748B; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;">Full Name</div>
+        <div style="font-weight: 600; font-size: 1rem; color: var(--accent);">{{ current_user.name }}</div>
+      </div>
+      <div>
+        <div class="filter-field label" style="color: #64748B; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;">Email Address</div>
+        <div style="font-weight: 600; font-size: 1rem; color: var(--accent);">{{ current_user.email }}</div>
+      </div>
+      <div>
+        <div class="filter-field label" style="color: #64748B; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;">System Role</div>
+        <div style="font-weight: 600; font-size: 1rem; color: var(--accent);">{{ current_user.role|replace('_', ' ')|title }}</div>
+      </div>
+      <div>
+        <div class="filter-field label" style="color: #64748B; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;">Department</div>
+        <div style="font-weight: 600; font-size: 1rem; color: var(--accent);">{{ current_user.department or 'Administration & Operations' }}</div>
+      </div>
+      <div>
+        <div class="filter-field label" style="color: #64748B; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;">Account Status</div>
+        <div style="font-weight: 600; font-size: 0.95rem;">
+          {% if current_user.is_active %}
+          <span style="color: #15803D; display: inline-flex; align-items: center; gap: 6px;"><i data-lucide="check-circle" style="width:16px;height:16px;"></i> Active & Authorized</span>
+          {% else %}
+          <span style="color: #B91C1C; display: inline-flex; align-items: center; gap: 6px;"><i data-lucide="x-circle" style="width:16px;height:16px;"></i> Disabled</span>
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="filter-field label" style="color: #64748B; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;">Email Verification</div>
+        <div style="font-weight: 600; font-size: 0.95rem;">
+          {% if current_user.email_verified_at %}
+          <span style="color: #15803D; display: inline-flex; align-items: center; gap: 6px;"><i data-lucide="shield-check" style="width:16px;height:16px;"></i> Verified ({{ current_user.email_verified_at.strftime('%b %d, %Y') }})</span>
+          {% else %}
+          <span style="color: #B7791F; display: inline-flex; align-items: center; gap: 6px;"><i data-lucide="alert-triangle" style="width:16px;height:16px;"></i> Pending Verification</span>
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="filter-field label" style="color: #64748B; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;">Member Since</div>
+        <div style="font-weight: 600; font-size: 0.95rem; color: #475569;">
+          {{ current_user.created_at.strftime('%B %d, %Y') if current_user.created_at else 'System Setup' }}
+        </div>
+      </div>
+      <div>
+        <div class="filter-field label" style="color: #64748B; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;">Last Login</div>
+        <div style="font-weight: 600; font-size: 0.95rem; color: #475569;">
+          {{ current_user.last_login_at.strftime('%b %d, %Y at %I:%M %p UTC') if current_user.last_login_at else 'Current Session' }}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Security Overview Card -->
+  <section class="card glass">
+    <div class="card-head">
+      <h2>Security & Access</h2>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 0;">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; background: #FAF9F7; border: 1px solid #EEECE8;">
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: #EEF1F5; color: var(--accent); display: flex; align-items: center; justify-content: center;">
+          <i data-lucide="lock" style="width: 18px; height: 18px;"></i>
+        </div>
+        <div style="flex: 1;">
+          <div style="font-weight: 600; font-size: 0.88rem; color: var(--accent);">Password Protection</div>
+          <div class="muted small">Argon2id cryptographic hashing</div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; background: #FAF9F7; border: 1px solid #EEECE8;">
+        <div style="width: 36px; height: 36px; border-radius: 8px; background: #EAF6ED; color: var(--success); display: flex; align-items: center; justify-content: center;">
+          <i data-lucide="shield-check" style="width: 18px; height: 18px;"></i>
+        </div>
+        <div style="flex: 1;">
+          <div style="font-weight: 600; font-size: 0.88rem; color: var(--accent);">Session Integrity</div>
+          <div class="muted small">12-hour rotating token authentication</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 10px;">
+        <a href="{{ url_for('auth.change_password') }}" class="btn-secondary" style="width: 100%; justify-content: center;">
+          <i data-lucide="key-round"></i> Change Account Password
+        </a>
+        <a href="{{ url_for('auth.active_sessions') }}" class="btn-secondary" style="width: 100%; justify-content: center;">
+          <i data-lucide="monitor-smartphone"></i> Review Active Sessions
+        </a>
+      </div>
+    </div>
+  </section>
+</div>
+
+{% elif section == 'sessions' %}
+<!-- Active Sessions Panel -->
+<section class="card glass" style="max-width: 960px;">
+  <div class="card-head" style="display: flex; align-items: center; justify-content: space-between;">
+    <div>
+      <h2>Active Browser Sessions</h2>
+      <p class="muted small" style="margin-top: 4px;">Devices currently authenticated to your Krishna Payroll account.</p>
+    </div>
+    <span class="badge blue">{{ sessions|length }} Active</span>
+  </div>
+
+  {% if sessions %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Device / Client</th>
+          <th>IP Address</th>
+          <th>Last Active (UTC)</th>
+          <th>Expires (UTC)</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in sessions %}
+        <tr>
+          <td>
+            <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--accent);">
+              <i data-lucide="laptop" style="width: 16px; height: 16px; color: #64748B;"></i>
+              {{ item.device or 'Desktop Browser' }}
+            </div>
+          </td>
+          <td><code>{{ item.ip_address or '127.0.0.1' }}</code></td>
+          <td>{{ item.last_seen_at.strftime('%Y-%m-%d %H:%M') if item.last_seen_at else '--' }}</td>
+          <td>{{ item.expires_at.strftime('%Y-%m-%d %H:%M') if item.expires_at else '--' }}</td>
+          <td><span class="badge ok">Current</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% else %}
-    <h3>Change password</h3><form method="post" class="auth-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Current password<input name="current_password" type="password" autocomplete="current-password" required></label><label>New password<input name="password" type="password" autocomplete="new-password" minlength="12" required></label><button class="btn-primary" type="submit">Update password</button></form>
+  <p class="muted" style="padding: 24px 0; text-align: center;">No active sessions found.</p>
   {% endif %}
 </section>
+
+{% else %}
+<!-- Security / Change Password Panel -->
+<section class="card glass" style="max-width: 640px;">
+  <div class="card-head">
+    <h2>Change Account Password</h2>
+    <p class="muted small" style="margin-top: 4px;">Update your password to keep your payroll account secure.</p>
+  </div>
+
+  <form method="post" action="{{ url_for('auth.change_password') }}" class="auth-form" style="display: flex; flex-direction: column; gap: 16px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    
+    <div class="filter-field">
+      <label for="current_password" style="font-size: .72rem; font-weight: 700; text-transform: uppercase; color: #475569;">Current Password</label>
+      <input id="current_password" name="current_password" type="password" autocomplete="current-password" placeholder="Enter current password" required style="padding: 10px 14px; border: 1px solid #DEDAD3; border-radius: 9px; background: #fff;" />
+    </div>
+
+    <div class="filter-field">
+      <label for="new_password" style="font-size: .72rem; font-weight: 700; text-transform: uppercase; color: #475569;">New Password</label>
+      <input id="new_password" name="password" type="password" autocomplete="new-password" minlength="12" placeholder="Minimum 12 characters with uppercase & number" required style="padding: 10px 14px; border: 1px solid #DEDAD3; border-radius: 9px; background: #fff;" />
+    </div>
+
+    <div style="margin-top: 8px; display: flex; gap: 12px;">
+      <button class="btn-primary" type="submit">
+        <i data-lucide="shield-check"></i> Update Password
+      </button>
+      <a href="{{ url_for('auth.profile') }}" class="btn-secondary">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endif %}
 {% endblock %}
