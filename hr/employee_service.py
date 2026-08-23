@@ -10,7 +10,7 @@ main transaction.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Optional
 
@@ -26,6 +26,8 @@ from hr.models import (
     EmployeeEmploymentHistory,
     EmployeeSalaryStructure,
     EmployeeSalaryComponent,
+    Shift,
+    EmployeeShift,
     LeaveType,
     EmployeeLeaveBalance,
     LeaveRequest,
@@ -449,6 +451,13 @@ def get_employee_salary_structure(
     ).first()
 
 
+def get_employee_salary_history(employee_id: int) -> List[EmployeeSalaryStructure]:
+    """Return all historical and active salary structures for an employee ordered by effective date."""
+    return EmployeeSalaryStructure.query.filter_by(
+        employee_id=employee_id
+    ).order_by(EmployeeSalaryStructure.effective_from.desc()).all()
+
+
 def create_salary_structure(
     employee_id: int, structure_data: dict, performed_by: Optional[int] = None
 ) -> EmployeeSalaryStructure:
@@ -456,7 +465,8 @@ def create_salary_structure(
     eff_from = structure_data["effective_from"]
     eff_to = structure_data.get("effective_to")
 
-    # Check for overlapping active structures
+    # If an existing active structure exists, automatically roll it over up to the new effective date
+    # rather than failing with an overlapping error, preserving historical salary integrity.
     q = EmployeeSalaryStructure.query.filter(
         EmployeeSalaryStructure.employee_id == employee_id,
         EmployeeSalaryStructure.status == "active",
@@ -464,15 +474,18 @@ def create_salary_structure(
     for existing in q.all():
         ex_from = existing.effective_from
         ex_to = existing.effective_to
-        overlaps = (
-            (ex_to is None or ex_to >= eff_from)
-            and (eff_to is None or eff_to >= ex_from)
-        )
-        if overlaps:
-            raise ValueError(
-                f"Overlapping active salary structure exists (id={existing.id}, "
-                f"from={ex_from}, to={ex_to})"
-            )
+        if ex_from < eff_from:
+            if ex_to is None or ex_to >= eff_from:
+                existing.effective_to = eff_from - timedelta(days=1)
+                existing.status = "inactive"
+        elif ex_from == eff_from:
+            # Replaces/updates same-day structure
+            existing.status = "inactive"
+            existing.effective_to = eff_from
+        else:
+            # Future structure collision
+            if eff_to is None or eff_to >= ex_from:
+                existing.status = "inactive"
 
     ss = EmployeeSalaryStructure(**structure_data)
     db.session.add(ss)
@@ -537,6 +550,51 @@ def get_leave_types(active_only: bool = True) -> List[LeaveType]:
     if active_only:
         q = q.filter_by(is_active=True)
     return q.order_by(LeaveType.name).all()
+
+
+# ─────────────────────────────────────────────── Shifts
+def create_shift(shift_data: dict, performed_by: Optional[int] = None) -> Shift:
+    if Shift.query.filter_by(code=shift_data.get("code")).first():
+        raise ValueError(f"Shift code '{shift_data['code']}' already exists")
+    shift = Shift(**shift_data)
+    db.session.add(shift)
+    try:
+        db.session.commit()
+        _create_audit_log("shift", shift.id, "create", performed_by, None, shift_data)
+        db.session.commit()
+        return shift
+    except Exception as exc:
+        db.session.rollback()
+        raise ValueError(f"Failed to create shift: {exc}") from exc
+
+
+def get_shifts(active_only: bool = False) -> List[Shift]:
+    q = Shift.query
+    if active_only:
+        q = q.filter_by(is_active=True)
+    return q.order_by(Shift.name).all()
+
+
+def get_shift(shift_id: int) -> Optional[Shift]:
+    return Shift.query.get(shift_id)
+
+
+def update_shift(shift_id: int, shift_data: dict, performed_by: Optional[int] = None) -> Shift:
+    shift = Shift.query.get(shift_id)
+    if not shift:
+        raise ValueError(f"Shift {shift_id} not found")
+    old = {"name": shift.name, "code": shift.code, "is_active": shift.is_active}
+    for k, v in shift_data.items():
+        if hasattr(shift, k):
+            setattr(shift, k, v)
+    try:
+        db.session.commit()
+        _create_audit_log("shift", shift.id, "update", performed_by, old, shift_data)
+        db.session.commit()
+        return shift
+    except Exception as exc:
+        db.session.rollback()
+        raise ValueError(f"Failed to update shift: {exc}") from exc
 
 
 # ─────────────────────────────────────────────── Leave Requests

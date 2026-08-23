@@ -25,15 +25,24 @@ def _as_bool(value: str | None, default: bool = False) -> bool:
 def _database_uri() -> str:
     """Build the SQLAlchemy URI.
 
-    SQLAlchemy 2.x defaults to the psycopg2 dialect for ``postgresql://``
-    URLs, but we ship psycopg v3. We rewrite the scheme to the explicit
-    psycopg dialect so ``create_engine`` imports ``psycopg`` and never
-    tries to import ``psycopg2``.
+    AttendanceOS / Krishna Payroll uses SQLite exclusively.
+    The active database is: instance/krishna_erp.db
+
+    The DATABASE_URL environment variable must be set in .env as:
+        DATABASE_URL=sqlite:///krishna_erp.db
+
+    Flask resolves this relative path to the instance/ folder automatically,
+    giving the full path: <project>/instance/krishna_erp.db
+
+    The fallback below also points explicitly to instance/ so the correct
+    database is used even when .env is absent (e.g. bare ``python app.py``).
     """
     raw = os.getenv(
         "DATABASE_URL",
-        f"sqlite:///{os.path.join(BASE_DIR, 'krishna_erp.db')}",
+        f"sqlite:///{os.path.join(BASE_DIR, 'instance', 'krishna_erp.db')}",
     )
+    # Safety rewrite for postgresql:// schemes (not used in production but
+    # kept so the URI is valid if ever passed inadvertently).
     if raw.startswith("postgresql://"):
         return "postgresql+psycopg://" + raw[len("postgresql://"):]
     if raw.startswith("postgres://"):
@@ -76,10 +85,10 @@ class Config:
     APPLE_PRIVATE_KEY = os.getenv("APPLE_PRIVATE_KEY")
 
     # --- Database ---
+    # Single database: instance/krishna_erp.db (SQLite)
+    # Configured via DATABASE_URL=sqlite:///krishna_erp.db in .env
     SQLALCHEMY_DATABASE_URI: str = _database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
-    # Works with SQLite and PostgreSQL. PostgreSQL deployments can still be
-    # selected by setting DATABASE_URL without changing application code.
     SQLALCHEMY_ENGINE_OPTIONS: dict = {"pool_pre_ping": True, "pool_recycle": 1800}
 
     # --- Camera ---

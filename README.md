@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Flask-3.x-000000?style=for-the-badge&logo=flask&logoColor=white" alt="Flask 3.x">
   <img src="https://img.shields.io/badge/OpenCV-4.10%2B-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white" alt="OpenCV 4.10+">
   <img src="https://img.shields.io/badge/AI-InsightFace-6F42C1?style=for-the-badge" alt="InsightFace">
-  <img src="https://img.shields.io/badge/Database-SQLite%20%7C%20PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white" alt="SQLite / PostgreSQL">
+  <img src="https://img.shields.io/badge/Database-SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Tests-23%2F23%20Passing-green?style=for-the-badge" alt="Tests Passing">
 </p>
@@ -272,7 +272,7 @@ Implemented in `auth.py` and `database/auth_models.py`:
 | Layer | Technology | Specifier in `requirements.txt` |
 |---|---|---|
 | **Backend Framework** | Python 3.14+, Flask 3.x, Flask-SQLAlchemy | `Flask>=3.0,<4.0`, `Flask-SQLAlchemy>=3.1,<4.0` |
-| **ORM / Database** | SQLAlchemy 2.x, SQLite / PostgreSQL | `SQLAlchemy>=2.0.36,<3.0`, `psycopg[binary]>=3.2.3` |
+| **ORM / Database** | SQLAlchemy 2.x, SQLite (`instance/krishna_erp.db`) | `SQLAlchemy>=2.0.36,<3.0` |
 | **Computer Vision** | OpenCV 4.10+, NumPy, Pillow | `opencv-python>=4.10.0.84`, `numpy>=2.1.0`, `Pillow>=11.0.0` |
 | **AI / Machine Learning** | InsightFace `buffalo_l`, ONNX Runtime | `insightface>=0.7.3`, `onnxruntime>=1.19.0` |
 | **Authentication** | Argon2, Authlib | `argon2-cffi>=23.1.0`, `Authlib>=1.3.1` |
@@ -293,7 +293,7 @@ flowchart TD
     OpenCV --> InsightFace["InsightFace buffalo_l\n512-d Face Embeddings"]
     InsightFace --> Matcher["Cosine Similarity Matcher"]
     Matcher --> AttendanceService["attendance_service.py\nIN/OUT & Time Rules"]
-    HR --> DB[("SQLAlchemy Models (50 Tables)\nSQLite / PostgreSQL")]
+    HR --> DB[("SQLAlchemy Models (57 Tables)\nSQLite · instance/krishna_erp.db")]
     AttendanceService --> DB
     Auth --> DB
     DB --> Flask
@@ -448,13 +448,11 @@ pip install -r requirements.txt
 
 ### 4. Database Setup
 
-#### Local SQLite (Default):
-No extra setup required! Database file will be auto-created at `database/attendanceos.db`.
+SQLite is used exclusively. The database file is auto-created at `instance/krishna_erp.db` on first run — no extra setup needed.
 
-#### PostgreSQL Setup:
-Create PostgreSQL database, then set environment variable:
+To create/update tables after code changes:
 ```bash
-export DATABASE_URL="postgresql+psycopg://postgres:password@localhost:5432/attendanceos"
+python scripts/init_db.py
 ```
 
 ### 5. Run Database Migration
@@ -501,7 +499,6 @@ Open [http://localhost:5000](http://localhost:5000) in your browser.
 | `InsightFace model download error` | Internet disconnect on first launch | InsightFace automatically downloads `buffalo_l` (~280MB) on first run to `~/.insightface/models/`. Ensure internet is connected during initial face enrolment. |
 | Camera feed is black / empty | Incorrect camera index or missing permission | Test source via `POST /api/cameras/<id>/test` or check system camera permissions. |
 | `Address already in use` | Port 5000 occupied | Run `export PORT=5001` (Linux/macOS) or `set PORT=5001` (Windows). |
-| PostgreSQL connection error | Invalid DB URL format | Ensure DB URL uses `postgresql+psycopg://user:pass@localhost:5432/dbname`. |
 
 ---
 
@@ -565,7 +562,7 @@ tests/test_teacher_module.py::test_dashboard_summary_and_reports PASSED
 | Variable | Default | Required? | Purpose |
 |---|---|---|---|
 | `FLASK_SECRET` | `dev-secret-change-me` | Recommended | Flask session secret key |
-| `DATABASE_URL` | SQLite path | No | Database connection URI (SQLite or PostgreSQL) |
+| `DATABASE_URL` | `sqlite:///krishna_erp.db` | No | SQLite database URI (resolves to `instance/krishna_erp.db`) |
 | `CAMERA_SOURCE` | `0` | No | Initial camera stream source |
 | `FACE_MATCH_THRESHOLD` | `0.35` | No | Cosine similarity threshold for face recognition |
 | `ATTENDANCE_COOLDOWN_SECONDS` | `300` | No | Recognition cooldown per person (seconds) |

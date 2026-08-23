@@ -58,7 +58,7 @@
       </div>
       
       <div class="auth-options">
-        <a href="{{ url_for('auth.verify_required', email=email) }}" class="auth-option-link">
+        <a href="{{ url_for('auth.verify_code', email=email) }}" class="auth-option-link">
           <span class="auth-option-icon">🔗</span>
           <span>Use verification link instead</span>
         </a>

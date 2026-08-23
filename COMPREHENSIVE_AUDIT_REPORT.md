@@ -54,9 +54,8 @@ This column was added in the isolated auth models migration. Previous schema (if
 ## 2. DATABASE
 
 ### 2.1 Actual database used
-- **Development:** SQLite (`krishna_erp.db` or `:memory:` for tests)
-- **Production:** PostgreSQL via `DATABASE_URL` (e.g., `postgresql://user:pass@host/db`)
-- **ORM:** SQLAlchemy 2.x with `psycopg` (v3) dialect
+- **Development & Production:** SQLite (`instance/krishna_erp.db`, or `:memory:` for isolated unit tests)
+- **ORM:** SQLAlchemy 2.x
 
 ### 2.2 Migration performed
 **Scripts:**
@@ -509,7 +508,7 @@ Before deploying to production, verify:
 - [ ] `FLASK_DEBUG=False`
 - [ ] `FLASK_SECRET` = strong random string (32+ chars)
 - [ ] `SESSION_COOKIE_SECURE=True`
-- [ ] `DATABASE_URL` = PostgreSQL connection string
+- [ ] `DATABASE_URL` = `sqlite:///krishna_erp.db` (resolves to `instance/krishna_erp.db`)
 - [ ] `SMTP_*` variables set with **Gmail App Password**
 - [ ] `GOOGLE_CLIENT_ID/SECRET` set (if using Google OAuth)
 - [ ] `APPLE_*` variables set (if using Apple OAuth)

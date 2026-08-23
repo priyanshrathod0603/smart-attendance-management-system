@@ -46,28 +46,33 @@
              class="nav-sub {% if active_page == 'students' and not active_class %}active{% endif %}">
             <i data-lucide="school"></i><span>All Students</span>
           </a>
-          <div class="nav-sub-scrollable" style="max-height: 200px; overflow-y: auto; padding-right: 4px; border-top: 1px solid var(--glass-border-light); margin-top: 4px; padding-top: 4px;">
-            <div class="nav-group-label" style="padding: 4px 8px 2px 8px; font-size: 10px; opacity: 0.7; letter-spacing: 0.5px;">PRE-PRIMARY</div>
-            {% for c in ["Nursery", "Jr KG", "Sr KG"] %}
-              <a href="{{ url_for('page_students_class', class_name=c) }}"
-                 class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}" style="padding: 6px 12px; font-size: 13px;">
-                <i data-lucide="graduation-cap" style="width: 14px; height: 14px;"></i><span>{{ c }}</span>
-              </a>
-            {% endfor %}
-            <div class="nav-group-label" style="padding: 6px 8px 2px 8px; font-size: 10px; opacity: 0.7; letter-spacing: 0.5px;">PRIMARY</div>
-            {% for c in ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5"] %}
-              <a href="{{ url_for('page_students_class', class_name=c) }}"
-                 class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}" style="padding: 6px 12px; font-size: 13px;">
-                <i data-lucide="graduation-cap" style="width: 14px; height: 14px;"></i><span>{{ c }}</span>
-              </a>
-            {% endfor %}
-            <div class="nav-group-label" style="padding: 6px 8px 2px 8px; font-size: 10px; opacity: 0.7; letter-spacing: 0.5px;">UPPER PRIMARY</div>
-            {% for c in ["Class 6", "Class 7", "Class 8"] %}
-              <a href="{{ url_for('page_students_class', class_name=c) }}"
-                 class="nav-sub {% if active_page == 'students' and active_class == c %}active{% endif %}" style="padding: 6px 12px; font-size: 13px;">
-                <i data-lucide="graduation-cap" style="width: 14px; height: 14px;"></i><span>{{ c }}</span>
-              </a>
-            {% endfor %}
+          <div class="nav-sub-accordion {% if active_class %}open{% endif %}">
+            <button class="nav-sub nav-sub-trigger {% if active_class %}active{% endif %}" type="button">
+              <i data-lucide="graduation-cap"></i><span>Classes</span><i data-lucide="chevron-right" class="nav-sub-chevron"></i>
+            </button>
+            <div class="nav-sub-panel">
+              <div class="nav-group-label">PRE-PRIMARY</div>
+              {% for c in ["Nursery", "Jr KG", "Sr KG"] %}
+                <a href="{{ url_for('page_students_class', class_name=c) }}"
+                   class="nav-sub-item {% if active_page == 'students' and active_class == c %}active{% endif %}">
+                  <span>{{ c }}</span>
+                </a>
+              {% endfor %}
+              <div class="nav-group-label">PRIMARY</div>
+              {% for c in ["Class 1", "Class 2", "Class 3", "Class 4", "Class 5"] %}
+                <a href="{{ url_for('page_students_class', class_name=c) }}"
+                   class="nav-sub-item {% if active_page == 'students' and active_class == c %}active{% endif %}">
+                  <span>{{ c }}</span>
+                </a>
+              {% endfor %}
+              <div class="nav-group-label">UPPER PRIMARY</div>
+              {% for c in ["Class 6", "Class 7", "Class 8"] %}
+                <a href="{{ url_for('page_students_class', class_name=c) }}"
+                   class="nav-sub-item {% if active_page == 'students' and active_class == c %}active{% endif %}">
+                  <span>{{ c }}</span>
+                </a>
+              {% endfor %}
+            </div>
           </div>
         </div>
       </div>

@@ -69,7 +69,10 @@ from hr.employee_service import (
     # Employment history
     create_employment_history,
     # Salary
-    get_employee_salary_structure, create_salary_structure, add_salary_component,
+    get_employee_salary_structure, get_employee_salary_history,
+    create_salary_structure, add_salary_component,
+    # Shifts
+    create_shift, get_shifts, get_shift, update_shift,
     # Leave
     create_leave_type, get_leave_types, create_leave_request,
     approve_leave_request, reject_leave_request, cancel_leave_request,
@@ -81,7 +84,7 @@ from hr.employee_service import (
 )
 from hr.models import (
     Department, Designation, Employee, SalaryComponent,
-    EmployeeSalaryStructure, EmployeeSalaryComponent,
+    EmployeeSalaryStructure, EmployeeSalaryComponent, Shift, EmployeeShift,
     LeaveType, EmployeeLeaveBalance, LeaveRequest,
     OvertimeRecord, EmployeeBonus, EmployeeLoan,
     Reimbursement, PayrollPeriod, PayrollRecord, HRAuditLog,
@@ -289,6 +292,13 @@ def employees():
 
     data = request.get_json() or {}
     _dates_from(data, "date_of_birth", "joining_date", "confirmation_date")
+
+    # Extract optional salary configuration fields if submitted together
+    basic_sal = data.pop("basic_salary", None)
+    ot_rate = data.pop("overtime_rate", None)
+    pay_freq = data.pop("pay_frequency", "monthly")
+    sal_eff_from = data.pop("salary_effective_from", None) or data.get("joining_date")
+
     required = ["employee_code", "first_name", "last_name", "email", "phone",
                 "joining_date", "employment_type", "department_id", "designation_id"]
     missing = [f for f in required if not data.get(f)]
@@ -297,6 +307,24 @@ def employees():
 
     try:
         emp = create_employee(data, performed_by=None)
+        if basic_sal is not None:
+            try:
+                eff_d = _parse_date(sal_eff_from) if isinstance(sal_eff_from, str) else sal_eff_from
+                create_salary_structure(
+                    emp.id,
+                    {
+                        "basic_salary": basic_sal,
+                        "gross_salary": basic_sal,
+                        "overtime_rate": ot_rate,
+                        "pay_frequency": pay_freq,
+                        "effective_from": eff_d or emp.joining_date,
+                        "status": "active",
+                    },
+                    performed_by=None,
+                )
+            except Exception as sal_err:
+                # Log but keep employee
+                pass
         return jsonify(emp.to_dict()), 201
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -336,7 +364,22 @@ def employee_by_teacher(teacher_id: int):
     return jsonify(emp.to_dict())
 
 
-# -- Salary structure --
+# -- Salary structure & history --
+@hr_bp.route("/employees/<int:emp_id>/salary-history", methods=["GET"])
+def employee_salary_history(emp_id: int):
+    emp = get_employee(emp_id)
+    if not emp:
+        return jsonify({"error": "Employee not found"}), 404
+    history = get_employee_salary_history(emp_id)
+    return jsonify([
+        {
+            **s.to_dict(),
+            "components": [c.to_dict() for c in s.salary_components]
+        }
+        for s in history
+    ])
+
+
 @hr_bp.route("/employees/<int:emp_id>/salary-structure", methods=["GET", "POST"])
 def employee_salary_structure(emp_id: int):
     if request.method == "GET":
@@ -495,6 +538,41 @@ def leave_types():
     try:
         lt = create_leave_type(data, performed_by=None)
         return jsonify(lt.to_dict()), 201
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+# ============================================================
+# SHIFTS
+# ============================================================
+@hr_bp.route("/shifts", methods=["GET", "POST"])
+def shifts():
+    if request.method == "GET":
+        active_only = request.args.get("active_only", "false").lower() == "true"
+        return jsonify([s.to_dict() for s in get_shifts(active_only=active_only)])
+
+    data = request.get_json() or {}
+    if not data.get("name") or not data.get("code") or not data.get("start_time") or not data.get("end_time"):
+        return jsonify({"error": "name, code, start_time, and end_time are required"}), 400
+    try:
+        shift = create_shift(data, performed_by=None)
+        return jsonify(shift.to_dict()), 201
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@hr_bp.route("/shifts/<int:shift_id>", methods=["GET", "PUT"])
+def shift_detail(shift_id: int):
+    if request.method == "GET":
+        s = get_shift(shift_id)
+        if not s:
+            return jsonify({"error": "Shift not found"}), 404
+        return jsonify(s.to_dict())
+
+    data = request.get_json() or {}
+    try:
+        s = update_shift(shift_id, data, performed_by=None)
+        return jsonify(s.to_dict())
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 

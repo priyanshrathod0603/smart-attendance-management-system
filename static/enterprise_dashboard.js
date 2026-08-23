@@ -77,26 +77,45 @@
       const trend = w.trend || [];
       const trendEl = document.getElementById("ent-trend");
       if (trendEl) {
-        trendEl.innerHTML = trend.length
-          ? trend.map((t) => `
-            <div class="trend-row">
-              <span class="trend-date">${e(t.date.slice(5))}</span>
-              <div class="trend-bar"><span style="width:${Math.min(100, t.pct)}%"></span></div>
-              <span class="trend-pct">${t.pct}%</span>
-            </div>`).join("")
-          : '<div class="empty">No trend data.</div>';
+        if (!trend.length) {
+          trendEl.innerHTML = '<div class="empty">No attendance trend data recorded for this week.</div>';
+        } else {
+          trendEl.innerHTML = trend.map((t) => {
+            let label = t.date;
+            try {
+              const dObj = new Date(t.date + "T00:00:00");
+              label = dObj.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+            } catch (err) {}
+            const pct = Number(t.pct || 0);
+            return `
+              <div class="trend-row" title="${label}: ${pct}% Attendance">
+                <span class="trend-date">${e(label)}</span>
+                <div class="trend-bar"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div>
+                <span class="trend-pct">${pct}%</span>
+              </div>`;
+          }).join("");
+        }
       }
 
       // Hourly
       const hourly = w.hourly || [];
       const hourlyEl = document.getElementById("ent-hourly");
       if (hourlyEl) {
-        const max = Math.max(1, ...hourly.map((h) => h.count));
-        hourlyEl.innerHTML = hourly.map((h) => `
-          <div class="hour-bar" title="${h.hour}:00 → ${h.count}">
-            <span class="hour-fill" style="height:${(h.count / max) * 100}%"></span>
-            <small>${h.hour}</small>
-          </div>`).join("");
+        if (!hourly.length) {
+          hourlyEl.innerHTML = '<div class="empty">No hourly entries recorded today.</div>';
+        } else {
+          const max = Math.max(1, ...hourly.map((h) => Number(h.count || 0)));
+          hourlyEl.innerHTML = hourly.map((h) => {
+            const cnt = Number(h.count || 0);
+            const hourStr = String(h.hour).padStart(2, "0") + ":00";
+            const fillPct = (cnt / max) * 100;
+            return `
+              <div class="hour-bar" title="${hourStr} — ${cnt} Entries">
+                <span class="hour-fill" style="height:${Math.max(4, fillPct)}%"></span>
+                <small>${String(h.hour)}h</small>
+              </div>`;
+          }).join("");
+        }
       }
 
       // Top late

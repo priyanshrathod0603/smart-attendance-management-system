@@ -6,11 +6,12 @@
 
 {% block content %}
 <!-- Settings Tabs Navigation -->
-<div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--glass-border); margin-bottom: 20px; overflow-x: auto; padding-bottom: 8px;">
+<div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; padding-bottom: 8px;">
   <button class="btn-secondary tab-btn active" data-tab="tab-set-dept"><i data-lucide="building"></i> Departments</button>
   <button class="btn-secondary tab-btn" data-tab="tab-set-desig"><i data-lucide="award"></i> Designations</button>
   <button class="btn-secondary tab-btn" data-tab="tab-set-comp"><i data-lucide="calculator"></i> Salary Components</button>
   <button class="btn-secondary tab-btn" data-tab="tab-set-leave"><i data-lucide="user-minus"></i> Leave Types</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-shifts"><i data-lucide="clock"></i> Shifts</button>
   <button class="btn-secondary tab-btn" data-tab="tab-set-rules"><i data-lucide="settings-2"></i> HR Rules</button>
 </div>
 
@@ -122,24 +123,53 @@
   </div>
 </div>
 
-<!-- 5. HR RULES SETTINGS SUMMARY -->
+<!-- 5. SHIFTS SETTINGS -->
+<div id="tab-set-shifts" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <h2>Work Shifts &amp; Schedules</h2>
+      <button class="btn-primary small" id="btn-add-shift"><i data-lucide="plus"></i> Add Shift</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Shift Name</th>
+            <th>Start Time</th>
+            <th>End Time</th>
+            <th>Grace (Mins)</th>
+            <th>Min Work (Mins)</th>
+            <th>Overnight</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-shifts-tbody">
+          <tr><td colspan="8" class="empty">Loading shifts...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 6. HR RULES SETTINGS SUMMARY -->
 <div id="tab-set-rules" class="tab-panel" style="display:none;">
   <div class="card glass">
     <div class="card-head"><h2>Active HR &amp; Payroll Rules</h2></div>
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 12px;">
-      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
         <h3>Daily Salary Calculation</h3>
         <p class="muted small" style="margin-top:4px;">Monthly Salary &divide; Working Days in Payroll Period (Excludes weekly offs &amp; declared holidays)</p>
       </div>
-      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
         <h3>Half-Day Deduction Rule</h3>
         <p class="muted small" style="margin-top:4px;">Half Day = 0.5 &times; Daily Salary deduction per occurrence</p>
       </div>
-      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
         <h3>Overtime Multiplier</h3>
         <p class="muted small" style="margin-top:4px;">Default = 1.0x (Configurable per employee salary structure to 1.5x or 2.0x)</p>
       </div>
-      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
+      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
         <h3>Payroll Finalization Immutability</h3>
         <p class="muted small" style="margin-top:4px;">Finalized payroll writes an immutable <code>PayrollAttendanceSummary</code> snapshot row per employee</p>
       </div>
@@ -307,6 +337,62 @@
     </form>
   </div>
 </div>
+
+<!-- ============== Add Shift Modal ============== -->
+<div id="shift-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3 id="shift-modal-title">Add Work Shift</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="shift-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Shift Name *</label>
+            <input type="text" id="shift-name" class="input-text" placeholder="General Day Shift" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Shift Code *</label>
+            <input type="text" id="shift-code" class="input-text" placeholder="GEN-DAY" required />
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Start Time *</label>
+            <input type="time" id="shift-start-time" class="input-text" value="09:00" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">End Time *</label>
+            <input type="time" id="shift-end-time" class="input-text" value="17:00" required />
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Grace Period (Minutes)</label>
+            <input type="number" id="shift-grace-mins" class="input-text" value="15" />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Min Work (Minutes)</label>
+            <input type="number" id="shift-half-day" class="input-text" value="480" />
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="shift-is-night" />
+            <span class="small" style="font-weight:600;">Overnight Shift (Crosses Midnight)</span>
+          </label>
+        </div>
+        <div id="shift-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Shift</button>
+      </footer>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -330,7 +416,17 @@ document.addEventListener("DOMContentLoaded", function() {
       allDepts = await window.j("/api/hr/departments");
       const tbody = document.getElementById("set-dept-tbody");
       if (!allDepts || allDepts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty">No departments configured yet.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="4">
+          <div class="empty-state-card">
+            <div class="empty-state-icon"><i data-lucide="building"></i></div>
+            <div class="empty-state-title">No Departments Configured</div>
+            <div class="empty-state-desc">Define departments such as Academics, Administration, Science, or Sports.</div>
+            <button type="button" class="btn-primary" onclick="document.getElementById('btn-add-dept').click()">
+              <i data-lucide="plus"></i> Add Department
+            </button>
+          </div>
+        </td></tr>`;
+        if (window.lucide) window.lucide.createIcons();
       } else {
         tbody.innerHTML = allDepts.map(d => `
           <tr>
@@ -354,7 +450,17 @@ document.addEventListener("DOMContentLoaded", function() {
       const desigs = await window.j("/api/hr/designations");
       const tbody = document.getElementById("set-desig-tbody");
       if (!desigs || desigs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty">No designations configured yet.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="4">
+          <div class="empty-state-card">
+            <div class="empty-state-icon"><i data-lucide="award"></i></div>
+            <div class="empty-state-title">No Designations Configured</div>
+            <div class="empty-state-desc">Add designations like Principal, Teacher, Accountant, or Lab Assistant.</div>
+            <button type="button" class="btn-primary" onclick="document.getElementById('btn-add-desig').click()">
+              <i data-lucide="plus"></i> Add Designation
+            </button>
+          </div>
+        </td></tr>`;
+        if (window.lucide) window.lucide.createIcons();
       } else {
         tbody.innerHTML = desigs.map(d => `
           <tr>
@@ -374,7 +480,17 @@ document.addEventListener("DOMContentLoaded", function() {
       const comps = await window.j("/api/hr/salary-components");
       const tbody = document.getElementById("set-comp-tbody");
       if (!comps || comps.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty">No salary components configured.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="9">
+          <div class="empty-state-card">
+            <div class="empty-state-icon"><i data-lucide="calculator"></i></div>
+            <div class="empty-state-title">No Salary Components Configured</div>
+            <div class="empty-state-desc">Configure components like HRA, DA, Special Allowance, or Professional Tax.</div>
+            <button type="button" class="btn-primary" onclick="document.getElementById('btn-add-comp').click()">
+              <i data-lucide="plus"></i> Add Component
+            </button>
+          </div>
+        </td></tr>`;
+        if (window.lucide) window.lucide.createIcons();
       } else {
         tbody.innerHTML = comps.map(c => `
           <tr>
@@ -399,7 +515,17 @@ document.addEventListener("DOMContentLoaded", function() {
       const types = await window.j("/api/hr/leave-types");
       const tbody = document.getElementById("set-leave-tbody");
       if (!types || types.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty">No leave types configured.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="7">
+          <div class="empty-state-card">
+            <div class="empty-state-icon"><i data-lucide="user-minus"></i></div>
+            <div class="empty-state-title">No Leave Types Configured</div>
+            <div class="empty-state-desc">Define leave policies like Casual Leave, Sick Leave, and Paid Time Off.</div>
+            <button type="button" class="btn-primary" onclick="document.getElementById('btn-add-leavetype').click()">
+              <i data-lucide="plus"></i> Add Leave Type
+            </button>
+          </div>
+        </td></tr>`;
+        if (window.lucide) window.lucide.createIcons();
       } else {
         tbody.innerHTML = types.map(t => `
           <tr>
@@ -414,6 +540,40 @@ document.addEventListener("DOMContentLoaded", function() {
         `).join('');
       }
     } catch (e) { console.error("Error loading leave types:", e); }
+  }
+
+  // Load Shifts
+  async function loadShifts() {
+    try {
+      const shifts = await window.j("/api/hr/shifts");
+      const tbody = document.getElementById("set-shifts-tbody");
+      if (!shifts || shifts.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8">
+          <div class="empty-state-card">
+            <div class="empty-state-icon"><i data-lucide="clock"></i></div>
+            <div class="empty-state-title">No Work Shifts Configured</div>
+            <div class="empty-state-desc">Configure working schedules, timings, and grace periods for staff and teachers.</div>
+            <button type="button" class="btn-primary" onclick="document.getElementById('btn-add-shift').click()">
+              <i data-lucide="plus"></i> Add Shift
+            </button>
+          </div>
+        </td></tr>`;
+        if (window.lucide) window.lucide.createIcons();
+      } else {
+        tbody.innerHTML = shifts.map(s => `
+          <tr>
+            <td><strong>${window.escapeHtml(s.code)}</strong></td>
+            <td>${window.escapeHtml(s.name)}</td>
+            <td>${window.escapeHtml(s.start_time || '--')}</td>
+            <td>${window.escapeHtml(s.end_time || '--')}</td>
+            <td>${s.grace_minutes || 0} mins</td>
+            <td>${s.minimum_work_minutes || 480} mins</td>
+            <td><span class="badge ${s.is_overnight ? 'yellow' : 'gray'}">${s.is_overnight ? 'Yes' : 'No'}</span></td>
+            <td><span class="badge ${s.is_active ? 'green' : 'gray'}">${s.is_active ? 'Active' : 'Inactive'}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) { console.error("Error loading shifts:", e); }
   }
 
   // Modals Listeners
@@ -512,10 +672,38 @@ document.addEventListener("DOMContentLoaded", function() {
     } catch (err) { alert(err.message || "Failed to add leave type"); }
   });
 
+  document.getElementById("btn-add-shift").addEventListener("click", () => {
+    document.getElementById("shift-form").reset();
+    window.openModal("#shift-modal");
+  });
+
+  document.getElementById("shift-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j("/api/hr/shifts", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          name: document.getElementById("shift-name").value.trim(),
+          code: document.getElementById("shift-code").value.trim(),
+          start_time: document.getElementById("shift-start-time").value,
+          end_time: document.getElementById("shift-end-time").value,
+          grace_minutes: parseInt(document.getElementById("shift-grace-mins").value || 15),
+          minimum_work_minutes: parseInt(document.getElementById("shift-half-day").value || 480),
+          is_overnight: document.getElementById("shift-is-night").checked,
+          is_active: true
+        })
+      });
+      window.closeModal("#shift-modal");
+      loadShifts();
+    } catch (err) { alert(err.message || "Failed to add shift"); }
+  });
+
   loadDepartments();
   loadDesignations();
   loadComponents();
   loadLeaveTypes();
+  loadShifts();
 });
 </script>
 {% endblock %}

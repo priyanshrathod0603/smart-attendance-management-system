@@ -1,8 +1,9 @@
-"""Create all tables in the PostgreSQL 17 database (run once).
+"""Create/update all tables in the SQLite database (safe, additive, idempotent).
+
+Uses the single application database: instance/krishna_erp.db
 
 Usage::
 
-    source venv/bin/activate
     python scripts/init_db.py
 """
 from __future__ import annotations

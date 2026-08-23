@@ -76,7 +76,7 @@
 <!-- ============== Add/Edit Employee Modal ============== -->
 <div id="employee-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
-  <div class="modal-panel" role="document" style="max-width: 820px; width: 92%;">
+  <div class="modal-panel" role="document" style="max-width: 860px; width: 94%;">
     <header class="modal-head">
       <h3 id="emp-modal-title">Add Employee</h3>
       <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
@@ -85,6 +85,30 @@
       <input type="hidden" id="emp-edit-id" value="" />
       <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding-right: 8px;">
         
+        <!-- Employee Source Selector (for New Employee mode) -->
+        <div id="emp-source-container" style="background: #FAF9F7; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 16px;">
+          <label class="small" style="font-weight: 700; color: var(--accent); display: block; margin-bottom: 8px;">Employee Source</label>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 600;">
+              <input type="radio" name="emp-source-type" value="new" checked id="source-new-emp" />
+              <span>New Employee</span>
+            </label>
+            <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 600;">
+              <input type="radio" name="emp-source-type" value="teacher" id="source-teacher-emp" />
+              <span>Existing Teacher</span>
+            </label>
+          </div>
+
+          <!-- Existing Teacher Selector Box -->
+          <div id="teacher-select-box" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);">
+            <label class="small" style="font-weight: 600; color: #475569;">Select Existing Teacher to Import / Link</label>
+            <select id="teacher-picker" class="input-select" style="margin-top: 4px;">
+              <option value="">-- Choose Teacher --</option>
+            </select>
+            <div id="teacher-link-warning" class="badge red" style="display: none; margin-top: 8px; width: 100%; padding: 8px 12px; font-size: 0.82rem; text-align: left;"></div>
+          </div>
+        </div>
+
         <!-- 1. Personal Information -->
         <div class="hr-section-header">
           <i data-lucide="user"></i><span>1. Personal Information</span>
@@ -92,15 +116,15 @@
         <div class="hr-form-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div>
             <label class="small" style="font-weight:600;">First Name <span class="danger">*</span></label>
-            <input type="text" id="emp-first-name" class="input-text" placeholder="John" required />
+            <input type="text" id="emp-first-name" class="input-text" placeholder="First Name" required />
           </div>
           <div>
             <label class="small" style="font-weight:600;">Middle Name</label>
-            <input type="text" id="emp-middle-name" class="input-text" placeholder="M." />
+            <input type="text" id="emp-middle-name" class="input-text" placeholder="Middle Name" />
           </div>
           <div>
             <label class="small" style="font-weight:600;">Last Name <span class="danger">*</span></label>
-            <input type="text" id="emp-last-name" class="input-text" placeholder="Doe" required />
+            <input type="text" id="emp-last-name" class="input-text" placeholder="Last Name" required />
           </div>
           <div>
             <label class="small" style="font-weight:600;">Gender</label>
@@ -114,16 +138,9 @@
             <label class="small" style="font-weight:600;">Date of Birth</label>
             <input type="date" id="emp-dob" class="input-text" />
           </div>
-        </div>
-
-        <!-- 2. Contact Information -->
-        <div class="hr-section-header">
-          <i data-lucide="mail"></i><span>2. Contact Information</span>
-        </div>
-        <div class="hr-form-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div>
             <label class="small" style="font-weight:600;">Email Address <span class="danger">*</span></label>
-            <input type="email" id="emp-email" class="input-text" placeholder="john.doe@school.edu" required />
+            <input type="email" id="emp-email" class="input-text" placeholder="email@school.edu" required />
           </div>
           <div>
             <label class="small" style="font-weight:600;">Phone Number <span class="danger">*</span></label>
@@ -153,9 +170,9 @@
           </div>
         </div>
 
-        <!-- 3. Employment Information -->
+        <!-- 2. Employment Information -->
         <div class="hr-section-header">
-          <i data-lucide="briefcase"></i><span>3. Employment Information</span>
+          <i data-lucide="briefcase"></i><span>2. Employment Information</span>
         </div>
         <div class="hr-form-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div>
@@ -163,7 +180,7 @@
             <input type="text" id="emp-code" class="input-text" placeholder="EMP-101" required />
           </div>
           <div>
-            <label class="small" style="font-weight:600;">Link Teacher Profile</label>
+            <label class="small" style="font-weight:600;">Linked Teacher Profile</label>
             <select id="emp-teacher-id">
               <option value="">-- None (Non-Teacher Staff) --</option>
             </select>
@@ -214,9 +231,9 @@
           </div>
         </div>
 
-        <!-- 4. Emergency Contact -->
+        <!-- 3. Emergency Contact -->
         <div class="hr-section-header">
-          <i data-lucide="phone-call"></i><span>4. Emergency Contact</span>
+          <i data-lucide="phone-call"></i><span>3. Emergency Contact</span>
         </div>
         <div class="hr-form-grid" style="grid-template-columns: 1fr 1fr;">
           <div>
@@ -229,7 +246,32 @@
           </div>
         </div>
 
-        <div id="emp-modal-error" class="danger small" style="margin-top: 12px; padding: 8px 12px; background: rgba(255,59,48,0.1); border-radius: var(--radius-sm);" hidden></div>
+        <!-- 4. Salary Information (Employee-Specific) -->
+        <div id="emp-salary-section">
+          <div class="hr-section-header">
+            <i data-lucide="indian-rupee"></i><span>4. Salary Information</span>
+          </div>
+          <div class="hr-form-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <div>
+              <label class="small" style="font-weight:600;">Basic Salary (Monthly) <span class="danger">*</span></label>
+              <input type="number" step="0.01" id="emp-basic-salary" class="input-text" placeholder="e.g. 35000.00" />
+            </div>
+            <div>
+              <label class="small" style="font-weight:600;">Overtime Hourly Rate</label>
+              <input type="number" step="0.01" id="emp-ot-rate" class="input-text" placeholder="e.g. 200.00" />
+            </div>
+            <div>
+              <label class="small" style="font-weight:600;">Pay Frequency</label>
+              <select id="emp-pay-frequency">
+                <option value="monthly">Monthly</option>
+                <option value="bi-weekly">Bi-Weekly</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="emp-modal-error" class="danger small" style="margin-top: 12px; padding: 10px 14px; background: #FDEDED; border: 1px solid #F8C5C5; border-radius: var(--radius-sm);" hidden></div>
       </div>
       <footer class="modal-foot">
         <button class="btn-secondary" data-close="1" type="button">Cancel</button>
@@ -245,6 +287,8 @@
 document.addEventListener("DOMContentLoaded", function() {
   let allDepartments = [];
   let allDesignations = [];
+  let allTeachers = [];
+  let currentEmployees = [];
 
   // Load dropdown options
   async function loadMetadata() {
@@ -269,12 +313,96 @@ document.addEventListener("DOMContentLoaded", function() {
     } catch (e) { console.error("Error loading designations:", e); }
 
     try {
-      const teachers = await window.j("/api/teachers");
+      allTeachers = await window.j("/api/teachers");
       const tSel = document.getElementById("emp-teacher-id");
-      tSel.innerHTML = '<option value="">-- None (Non-Teacher Staff) --</option>' +
-        (teachers || []).map(t => `<option value="${t.id}">${window.escapeHtml(t.name)} (${window.escapeHtml(t.teacher_id)})</option>`).join('');
+      const tPicker = document.getElementById("teacher-picker");
+      const teacherOpts = (allTeachers || []).map(t => `<option value="${t.id}">${window.escapeHtml(t.name)} (${window.escapeHtml(t.teacher_id || 'ID:' + t.id)})</option>`).join('');
+      
+      tSel.innerHTML = '<option value="">-- None (Non-Teacher Staff) --</option>' + teacherOpts;
+      tPicker.innerHTML = '<option value="">-- Choose Teacher --</option>' + teacherOpts;
     } catch (e) { console.error("Error loading teachers for mapping:", e); }
   }
+
+  // Teacher Source Toggle
+  const sourceNew = document.getElementById("source-new-emp");
+  const sourceTeacher = document.getElementById("source-teacher-emp");
+  const teacherBox = document.getElementById("teacher-select-box");
+  const teacherPicker = document.getElementById("teacher-picker");
+  const linkWarning = document.getElementById("teacher-link-warning");
+  const submitBtn = document.getElementById("emp-submit-btn");
+
+  function onSourceChange() {
+    if (sourceTeacher.checked) {
+      teacherBox.style.display = "block";
+    } else {
+      teacherBox.style.display = "none";
+      linkWarning.style.display = "none";
+      submitBtn.disabled = false;
+    }
+  }
+  sourceNew.addEventListener("change", onSourceChange);
+  sourceTeacher.addEventListener("change", onSourceChange);
+
+  // When a teacher is selected in the source picker
+  teacherPicker.addEventListener("change", function() {
+    const tid = parseInt(this.value);
+    if (!tid) {
+      linkWarning.style.display = "none";
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // Check if this teacher is already linked to an employee
+    const existingEmp = currentEmployees.find(e => e.teacher_id === tid);
+    if (existingEmp) {
+      linkWarning.innerHTML = `<i data-lucide="alert-circle" style="width:14px;vertical-align:middle;margin-right:4px;"></i> Already linked to Employee <strong>${window.escapeHtml(existingEmp.employee_code)}</strong> (${window.escapeHtml(existingEmp.full_name)}). Duplicate linking is prevented.`;
+      linkWarning.style.display = "block";
+      submitBtn.disabled = true;
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
+    linkWarning.style.display = "none";
+    submitBtn.disabled = false;
+
+    // Find teacher record to prefill form
+    const teacher = allTeachers.find(t => t.id === tid);
+    if (teacher) {
+      document.getElementById("emp-teacher-id").value = teacher.id;
+      
+      const rawCode = teacher.teacher_id || `T${teacher.id}`;
+      document.getElementById("emp-code").value = rawCode.startsWith("EMP-") ? rawCode : `EMP-${rawCode}`;
+      
+      const parts = (teacher.name || "").trim().split(new RegExp("\\s+"));
+      if (parts.length === 1) {
+        document.getElementById("emp-first-name").value = parts[0] || "";
+        document.getElementById("emp-middle-name").value = "";
+        document.getElementById("emp-last-name").value = "Staff";
+      } else if (parts.length === 2) {
+        document.getElementById("emp-first-name").value = parts[0] || "";
+        document.getElementById("emp-middle-name").value = "";
+        document.getElementById("emp-last-name").value = parts[1] || "";
+      } else if (parts.length >= 3) {
+        document.getElementById("emp-first-name").value = parts[0] || "";
+        document.getElementById("emp-middle-name").value = parts.slice(1, -1).join(" ");
+        document.getElementById("emp-last-name").value = parts[parts.length - 1] || "";
+      }
+
+      document.getElementById("emp-phone").value = teacher.mobile || "";
+      document.getElementById("emp-email").value = teacher.email || `teacher_${teacher.id}@school.edu`;
+      document.getElementById("emp-joining-date").value = new Date().toISOString().slice(0, 10);
+
+      // Match department and designation if available
+      if (teacher.department) {
+        const d = allDepartments.find(dp => dp.name.toLowerCase() === teacher.department.toLowerCase());
+        if (d) document.getElementById("emp-department-id").value = d.id;
+      }
+      if (teacher.designation) {
+        const ds = allDesignations.find(dg => dg.name.toLowerCase() === teacher.designation.toLowerCase());
+        if (ds) document.getElementById("emp-designation-id").value = ds.id;
+      }
+    }
+  });
 
   // Load employee list
   async function loadEmployees() {
@@ -291,20 +419,33 @@ document.addEventListener("DOMContentLoaded", function() {
 
     try {
       const res = await window.j(url);
-      const employees = res.employees || [];
+      currentEmployees = res.employees || [];
       document.getElementById("employee-count").textContent = `${res.total || 0} total`;
 
       // Update manager dropdown
       const mgrSel = document.getElementById("emp-manager-id");
       mgrSel.innerHTML = '<option value="">None</option>' +
-        employees.map(e => `<option value="${e.id}">${window.escapeHtml(e.full_name)} (${window.escapeHtml(e.employee_code)})</option>`).join('');
+        currentEmployees.map(e => `<option value="${e.id}">${window.escapeHtml(e.full_name)} (${window.escapeHtml(e.employee_code)})</option>`).join('');
 
-      if (employees.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty">No employees found.</td></tr>';
+      if (currentEmployees.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8">
+              <div class="empty-state-card">
+                <div class="empty-state-icon"><i data-lucide="users"></i></div>
+                <div class="empty-state-title">No employees found</div>
+                <div class="empty-state-desc">Get started by adding your first employee or linking an existing teacher profile.</div>
+                <button type="button" class="btn-primary" onclick="document.getElementById('btn-add-employee').click()">
+                  <i data-lucide="user-plus"></i> Add Employee
+                </button>
+              </div>
+            </td>
+          </tr>`;
+        if (window.lucide) window.lucide.createIcons();
         return;
       }
 
-      tbody.innerHTML = employees.map(emp => `
+      tbody.innerHTML = currentEmployees.map(emp => `
         <tr>
           <td><strong><a href="/hr/employees/${emp.id}">${window.escapeHtml(emp.employee_code)}</a></strong></td>
           <td>
@@ -328,8 +469,8 @@ document.addEventListener("DOMContentLoaded", function() {
           </td>
           <td>
             <div style="display:flex; gap:6px;">
-              <a href="/hr/employees/${emp.id}" class="btn-secondary small">View</a>
-              <button class="btn-secondary small btn-edit-emp" data-id="${emp.id}" type="button">Edit</button>
+              <a href="/hr/employees/${emp.id}" class="btn-secondary small" title="View Profile">Profile</a>
+              <button class="btn-secondary small btn-edit-emp" data-id="${emp.id}" type="button" title="Edit Employee">Edit</button>
             </div>
           </td>
         </tr>
@@ -344,7 +485,8 @@ document.addEventListener("DOMContentLoaded", function() {
           try {
             const emp = await window.j(`/api/hr/employees/${empId}`);
             document.getElementById("emp-edit-id").value = emp.id;
-            document.getElementById("emp-modal-title").textContent = "Edit Employee (" + emp.employee_code + ")";
+            document.getElementById("emp-modal-title").textContent = `Edit Employee (${emp.employee_code})`;
+            document.getElementById("emp-source-container").style.display = "none";
             document.getElementById("emp-code").value = emp.employee_code || "";
             document.getElementById("emp-first-name").value = emp.first_name || "";
             document.getElementById("emp-middle-name").value = emp.middle_name || "";
@@ -369,6 +511,21 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById("emp-emg-name").value = emp.emergency_contact_name || "";
             document.getElementById("emp-emg-phone").value = emp.emergency_contact_phone || "";
             document.getElementById("emp-modal-error").hidden = true;
+
+            // Load salary structure into fields if available
+            try {
+              const ss = await window.j(`/api/hr/employees/${empId}/salary-structure`);
+              if (ss) {
+                document.getElementById("emp-basic-salary").value = ss.basic_salary || "";
+                document.getElementById("emp-ot-rate").value = ss.overtime_rate || "";
+                document.getElementById("emp-pay-frequency").value = ss.pay_frequency || "monthly";
+              }
+            } catch (err) {
+              document.getElementById("emp-basic-salary").value = "";
+              document.getElementById("emp-ot-rate").value = "";
+              document.getElementById("emp-pay-frequency").value = "monthly";
+            }
+
             window.openModal("#employee-modal");
           } catch (err) {
             alert("Failed to load employee details for editing.");
@@ -402,7 +559,13 @@ document.addEventListener("DOMContentLoaded", function() {
   document.getElementById("btn-add-employee").addEventListener("click", function() {
     document.getElementById("emp-edit-id").value = "";
     document.getElementById("emp-modal-title").textContent = "Add Employee";
+    document.getElementById("emp-source-container").style.display = "block";
+    document.getElementById("source-new-emp").checked = true;
+    document.getElementById("teacher-select-box").style.display = "none";
+    document.getElementById("teacher-link-warning").style.display = "none";
     document.getElementById("employee-form").reset();
+    document.getElementById("emp-joining-date").value = new Date().toISOString().slice(0, 10);
+    document.getElementById("emp-submit-btn").disabled = false;
     document.getElementById("emp-modal-error").hidden = true;
     window.openModal("#employee-modal");
   });
@@ -415,6 +578,10 @@ document.addEventListener("DOMContentLoaded", function() {
     errDiv.hidden = true;
     btn.disabled = true;
     btn.textContent = "Saving...";
+
+    const basicSalaryVal = document.getElementById("emp-basic-salary").value.trim();
+    const otRateVal = document.getElementById("emp-ot-rate").value.trim();
+    const payFreqVal = document.getElementById("emp-pay-frequency").value;
 
     const payload = {
       employee_code: document.getElementById("emp-code").value.trim(),
@@ -442,12 +609,45 @@ document.addEventListener("DOMContentLoaded", function() {
       emergency_contact_phone: document.getElementById("emp-emg-phone").value.trim() || null,
     };
 
+    if (basicSalaryVal) {
+      payload.basic_salary = parseFloat(basicSalaryVal);
+      payload.overtime_rate = otRateVal ? parseFloat(otRateVal) : 0;
+      payload.pay_frequency = payFreqVal;
+      payload.salary_effective_from = payload.joining_date;
+    }
+
     try {
       const editId = document.getElementById("emp-edit-id").value;
       if (editId) {
-        await window.j(`/api/hr/employees/${editId}`, { method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) });
+        await window.j(`/api/hr/employees/${editId}`, {
+          method: "PUT",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+        if (basicSalaryVal) {
+          try {
+            await window.j(`/api/hr/employees/${editId}/salary-structure`, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({
+                basic_salary: parseFloat(basicSalaryVal),
+                gross_salary: parseFloat(basicSalaryVal),
+                overtime_rate: otRateVal ? parseFloat(otRateVal) : 0,
+                pay_frequency: payFreqVal,
+                effective_from: payload.joining_date || new Date().toISOString().slice(0, 10),
+                status: "active"
+              })
+            });
+          } catch (salErr) {
+            console.warn("Salary structure update notice:", salErr);
+          }
+        }
       } else {
-        await window.j("/api/hr/employees", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload) });
+        await window.j("/api/hr/employees", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
       }
       window.closeModal("#employee-modal");
       loadEmployees();

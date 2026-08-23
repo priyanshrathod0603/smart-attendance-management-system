@@ -58,7 +58,23 @@
     $$(".nav-accordion-trigger").forEach((trigger) => {
       trigger.addEventListener("click", () => {
         const group = trigger.closest(".nav-accordion");
-        if (group) group.classList.toggle("open");
+        if (!group) return;
+        const willOpen = !group.classList.contains("open");
+        if (willOpen) {
+          // Collapse other open top-level accordions so navigation stays compact
+          $$(".nav-accordion.open").forEach((other) => {
+            if (other !== group) other.classList.remove("open");
+          });
+        }
+        group.classList.toggle("open", willOpen);
+      });
+    });
+    $$(".nav-sub-trigger").forEach((trigger) => {
+      trigger.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const subGroup = trigger.closest(".nav-sub-accordion");
+        if (subGroup) subGroup.classList.toggle("open");
       });
     });
   }
