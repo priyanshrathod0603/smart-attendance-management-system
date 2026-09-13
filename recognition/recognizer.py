@@ -1,19 +1,49 @@
 """Background face-recognition worker for a single video source.
 
-This module replaces the previous ``face_recognition``-based pipeline with
-an InsightFace + cosine-similarity matcher. InsightFace embeddings are
-already L2-normalised, so we just take the dot product of two embeddings
-and compare it against a configurable threshold.
+Architecture (4 cooperating threads per camera)
+------------------------------------------------
+Thread 1 — ``_capture_loop``
+    Owns cv2.VideoCapture exclusively. Reads frames at camera rate (~30 fps),
+    timestamps every frame, publishes to LatestFrameBuffer (capacity-1 slot),
+    and keeps ``last_frame`` current. NEVER calls InsightFace.
+
+Thread 2 — ``_recognition_loop``
+    Wakes on a controlled DETECTION_INTERVAL_S timer (~6–7 times/sec).
+    Each wake takes the NEWEST available frame via ``latest_nowait()`` —
+    never a backlog of old frames. Runs face detection + tracker update +
+    selective InsightFace recognition only when needed.
+
+Thread 3 — ``_stream_publisher_loop``
+    Encodes the latest annotated frame as JPEG exactly ONCE per interval
+    (capped at ~20 fps) and publishes to a StreamPublisher. All browser
+    clients share the single encoded output — no duplicate encoding per viewer.
+    Completely idle when no viewers are connected.
+
+Thread 4 — ``_attendance_loop``
+    Drains the bounded attendance event queue and writes to SQLite.
+    Database stalls never affect camera FPS or recognition latency.
+
+Key thermal-efficiency properties
+----------------------------------
+* ``detect_faces()`` (full InsightFace) runs at most DETECTION_INTERVAL_S
+  times per second (default ≈ 6–7/sec), not at camera capture rate.
+* Between detection passes the recognition loop is completely idle.
+* JPEG encoding happens once regardless of viewer count; zero cost when
+  no browser is watching.
+* All sleeps use ``_stop_event.wait(t)`` — interruptible, no busy-loops.
+* OpenCV thread count is bounded to prevent native-thread explosion.
 """
 from __future__ import annotations
 
 import os
 import platform
+import queue
 import re
 import threading
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import cv2
 import numpy as np
@@ -23,15 +53,374 @@ from database.models import Student, Teacher
 
 from .encoder import detect_faces
 from .face_registration import iter_known_embeddings
+from .metrics import metrics
 
+
+# ---------------------------------------------------------------------------
+# Limit OpenCV's internal thread pool at import time.
+# On an 8–10 core Apple Silicon machine, OpenCV defaults to using all cores.
+# Bounding to 4 threads prevents CPU/thermal oversubscription while retaining
+# enough parallelism for fast JPEG decode/encode and color conversion.
+# This must happen before any cv2.VideoCapture or cv2.imencode call.
+# ---------------------------------------------------------------------------
+_OPENCV_THREADS = int(os.environ.get("ATTENDANCEOS_OPENCV_THREADS", "4"))
+cv2.setNumThreads(_OPENCV_THREADS)
+
+
+# ---------------------------------------------------------------------------
+# Configurable constants
+# (All exposed at module top so operators can adjust without editing logic.)
+# ---------------------------------------------------------------------------
+
+# Camera capture resolution.
+CAPTURE_WIDTH: int = 640
+CAPTURE_HEIGHT: int = 480
+
+# How often (seconds) the recognition loop runs a full InsightFace detection
+# pass. Values between 0.12–0.20 (5–8 times/sec) are appropriate.
+# Larger = less CPU / heat; smaller = faster first-detection latency.
+DETECTION_INTERVAL_S: float = float(os.environ.get("ATTENDANCEOS_DETECTION_INTERVAL", "0.15"))
+
+# How long (seconds) to wait before retrying recognition on an unknown track.
+RERECOGNIZE_UNKNOWN_INTERVAL_S: float = 5.0
+
+# How long (seconds) before re-verifying an already-recognized track.
+RERECOGNIZE_KNOWN_INTERVAL_S: float = 30.0
+
+# Number of consecutive detection passes a face must appear in before we
+# commit a recognition result. Prevents false positives from single frames.
+RECOGNITION_CONFIRMATION_FRAMES: int = 2
+
+# How long (seconds) a track survives without any new detections before its
+# bounding box is removed from the UI.
+TRACK_TIMEOUT_S: float = 1.5
+
+# Minimum IoU to match a detection to an existing track.
+TRACK_IOU_THRESHOLD: float = 0.25
+
+# Bounded attendance event queue.
+ATTENDANCE_QUEUE_MAXSIZE: int = 50
+
+# Camera reconnect sleep (seconds).
+CAPTURE_RETRY_SLEEP_S: float = 2.0
+
+# Target FPS for the shared JPEG stream publisher.
+STREAM_TARGET_FPS: int = 20
+
+# JPEG quality for the stream (0–100). Lower = smaller bytes = less bandwidth.
+STREAM_JPEG_QUALITY: int = 80
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _utcnow() -> datetime:
-    """Timezone-aware UTC now (replacement for deprecated ``utcnow``)."""
     return datetime.now(timezone.utc)
 
 
+def _iou(box_a: tuple[int, int, int, int], box_b: tuple[int, int, int, int]) -> float:
+    """Intersection-over-Union for (top, right, bottom, left) boxes."""
+    top_a, right_a, bottom_a, left_a = box_a
+    top_b, right_b, bottom_b, left_b = box_b
+
+    inter_top = max(top_a, top_b)
+    inter_left = max(left_a, left_b)
+    inter_bottom = min(bottom_a, bottom_b)
+    inter_right = min(right_a, right_b)
+
+    inter_h = max(0, inter_bottom - inter_top)
+    inter_w = max(0, inter_right - inter_left)
+    inter_area = inter_h * inter_w
+
+    area_a = max(0, bottom_a - top_a) * max(0, right_a - left_a)
+    area_b = max(0, bottom_b - top_b) * max(0, right_b - left_b)
+    union_area = area_a + area_b - inter_area
+    if union_area <= 0:
+        return 0.0
+    return inter_area / union_area
+
+
+# ---------------------------------------------------------------------------
+# Latest-frame buffer (capacity = 1)
+# ---------------------------------------------------------------------------
+
+class LatestFrameBuffer:
+    """Thread-safe single-slot frame buffer.
+
+    Writers always overwrite — no queue, no backlog.
+    Readers block until a frame NEWER than their last-seen sequence arrives.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Condition(threading.Lock())
+        self._frame: Optional[np.ndarray] = None
+        self._timestamp: float = 0.0
+        self._seq: int = 0
+
+    def put(self, frame: np.ndarray) -> None:
+        with self._lock:
+            self._frame = frame
+            self._timestamp = time.monotonic()
+            self._seq += 1
+            self._lock.notify_all()
+
+    def get(self, last_seq: int, timeout: float = 1.0) -> tuple[int, Optional[np.ndarray], float]:
+        """Block until a frame newer than ``last_seq`` is available."""
+        with self._lock:
+            deadline = time.monotonic() + timeout
+            while self._seq == last_seq:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return last_seq, None, 0.0
+                self._lock.wait(remaining)
+            return self._seq, self._frame, self._timestamp
+
+    def latest_nowait(self) -> tuple[Optional[np.ndarray], float]:
+        """Return the newest frame without blocking (may be None)."""
+        with self._lock:
+            return self._frame, self._timestamp
+
+
+# ---------------------------------------------------------------------------
+# Shared JPEG stream publisher
+# ---------------------------------------------------------------------------
+
+class StreamPublisher:
+    """Encode the annotated camera frame ONCE and serve it to N clients.
+
+    The publisher tracks how many clients are actively subscribed so the
+    encoding thread can go idle when there are no viewers — eliminating
+    unnecessary JPEG work and keeping the CPU cooler.
+
+    Usage in the HTTP stream generator::
+
+        publisher.subscribe()
+        try:
+            while running:
+                seq, jpeg = publisher.get(last_seq, timeout=0.5)
+                if seq != last_seq:
+                    last_seq = seq
+                    yield multipart_chunk(jpeg)
+        finally:
+            publisher.unsubscribe()
+    """
+
+    def __init__(self) -> None:
+        self._cond = threading.Condition(threading.Lock())
+        self._jpeg_bytes: bytes = b""
+        self._seq: int = 0
+        self._subscribers: int = 0
+
+    # ---- publisher side ----
+
+    def publish(self, jpeg_bytes: bytes) -> None:
+        with self._cond:
+            self._jpeg_bytes = jpeg_bytes
+            self._seq += 1
+            self._cond.notify_all()
+
+    @property
+    def has_subscribers(self) -> bool:
+        with self._cond:
+            return self._subscribers > 0
+
+    # ---- subscriber side ----
+
+    def subscribe(self) -> None:
+        with self._cond:
+            self._subscribers += 1
+            self._cond.notify_all()
+
+    def unsubscribe(self) -> None:
+        with self._cond:
+            self._subscribers = max(0, self._subscribers - 1)
+
+    def get(self, last_seq: int, timeout: float = 0.5) -> tuple[int, bytes]:
+        """Block until a new JPEG is published or timeout expires."""
+        with self._cond:
+            deadline = time.monotonic() + timeout
+            while self._seq == last_seq:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return last_seq, b""
+                self._cond.wait(remaining)
+            return self._seq, self._jpeg_bytes
+
+
+# ---------------------------------------------------------------------------
+# Track / TrackStore
+# ---------------------------------------------------------------------------
+
+_NEXT_TRACK_ID = 0
+_TRACK_ID_LOCK = threading.Lock()
+
+
+def _new_track_id() -> int:
+    global _NEXT_TRACK_ID
+    with _TRACK_ID_LOCK:
+        tid = _NEXT_TRACK_ID
+        _NEXT_TRACK_ID += 1
+    return tid
+
+
+@dataclass
+class Track:
+    """State for one continuously tracked face trajectory."""
+
+    track_id: int
+    box: tuple[int, int, int, int]      # (top, right, bottom, left)
+    last_seen: float                     # time.monotonic()
+
+    name: str = "Unknown"
+    roll: str = "-"
+    confidence: float = 0.0
+    recognized: bool = False
+
+    confirm_count: int = 0
+    last_recognition_attempt: float = field(default_factory=lambda: 0.0)
+    last_recognition_confirmed: float = 0.0
+
+
+class TrackStore:
+    """IoU-based nearest-neighbour face tracker.
+
+    Tracks a small number of faces (≤ ~10) efficiently without heavy
+    dependencies. Identity is kept separate from track ID.
+    """
+
+    def __init__(self) -> None:
+        self._tracks: dict[int, Track] = {}
+        self._lock = threading.Lock()
+
+    def update(
+        self,
+        detections: list[tuple[tuple[int, int, int, int], list[float]]],
+        now: float,
+    ) -> tuple[list[Track], list[Track], list[Track]]:
+        """Match detections to tracks. Returns (matched, new, expired)."""
+        with self._lock:
+            matched_tracks: list[Track] = []
+            new_tracks: list[Track] = []
+            unmatched = list(range(len(detections)))
+
+            for tid, track in self._tracks.items():
+                best_iou = TRACK_IOU_THRESHOLD
+                best_idx = -1
+                for di in unmatched:
+                    score = _iou(track.box, detections[di][0])
+                    if score > best_iou:
+                        best_iou = score
+                        best_idx = di
+                if best_idx >= 0:
+                    track.box = detections[best_idx][0]
+                    track.last_seen = now
+                    matched_tracks.append(track)
+                    unmatched.remove(best_idx)
+
+            for di in unmatched:
+                box, _ = detections[di]
+                t = Track(
+                    track_id=_new_track_id(),
+                    box=box,
+                    last_seen=now,
+                    last_recognition_attempt=0.0,
+                )
+                self._tracks[t.track_id] = t
+                new_tracks.append(t)
+
+            cutoff = now - TRACK_TIMEOUT_S
+            expired_ids = [tid for tid, t in self._tracks.items() if t.last_seen < cutoff]
+            expired_tracks = [self._tracks.pop(tid) for tid in expired_ids]
+
+            return matched_tracks, new_tracks, expired_tracks
+
+    def get_detections_snapshot(self) -> list[dict]:
+        """Return current live track state for UI consumption."""
+        now = time.monotonic()
+        cutoff = now - TRACK_TIMEOUT_S
+        with self._lock:
+            return [
+                {
+                    "name": t.name,
+                    "roll": t.roll,
+                    "confidence": t.confidence,
+                    "box": list(t.box),
+                }
+                for t in self._tracks.values()
+                if t.last_seen >= cutoff
+            ]
+
+    def tracks_needing_recognition(self, now: float) -> list[Track]:
+        """Return tracks that InsightFace should process."""
+        with self._lock:
+            result = []
+            for t in self._tracks.values():
+                if not t.recognized:
+                    if now - t.last_recognition_attempt >= RERECOGNIZE_UNKNOWN_INTERVAL_S:
+                        result.append(t)
+                else:
+                    if now - t.last_recognition_confirmed >= RERECOGNIZE_KNOWN_INTERVAL_S:
+                        result.append(t)
+            return result
+
+    def update_identity(
+        self,
+        track_id: int,
+        name: str,
+        roll: str,
+        confidence: float,
+        now: float,
+    ) -> None:
+        with self._lock:
+            t = self._tracks.get(track_id)
+            if t is None:
+                return
+            t.last_recognition_attempt = now
+            if name != "Unknown":
+                t.confirm_count += 1
+                if t.confirm_count >= RECOGNITION_CONFIRMATION_FRAMES:
+                    t.name = name
+                    t.roll = roll
+                    t.confidence = confidence
+                    t.recognized = True
+                    t.last_recognition_confirmed = now
+            else:
+                if not t.recognized:
+                    t.confirm_count = 0
+                    t.name = "Unknown"
+                    t.roll = "-"
+                    t.confidence = confidence
+
+    def clear(self) -> None:
+        with self._lock:
+            self._tracks.clear()
+
+
+# ---------------------------------------------------------------------------
+# Attendance event (passed through the decoupled queue)
+# ---------------------------------------------------------------------------
+
+class AttendanceEvent(NamedTuple):
+    person_type: str
+    person_id: int
+    camera_id: Optional[int]
+    confidence: float
+    timestamp: datetime
+
+
+# ---------------------------------------------------------------------------
+# FaceRecognizer — orchestrates all four threads
+# ---------------------------------------------------------------------------
+
 class FaceRecognizer:
-    """Reads one video source in a background thread and matches faces."""
+    """Manages four background threads for one video source.
+
+    Thread 1 (_capture_loop)          — camera read only; always current.
+    Thread 2 (_recognition_loop)      — rate-gated InsightFace inference.
+    Thread 3 (_stream_publisher_loop) — shared JPEG encode; idle when 0 viewers.
+    Thread 4 (_attendance_loop)       — async DB writes.
+    """
 
     def __init__(
         self,
@@ -40,7 +429,6 @@ class FaceRecognizer:
         cooldown: int = 300,
         camera_id: Optional[int] = None,
     ) -> None:
-        # OpenCV accepts both int device indices and string RTSP URLs.
         self.source: str | int = self._normalize_source(source)
         self.threshold: float = threshold
         self.cooldown: int = cooldown
@@ -48,338 +436,512 @@ class FaceRecognizer:
 
         self.running: bool = False
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
-        self.cap: Optional[cv2.VideoCapture] = None
 
-        # Cached DB state (refreshed on demand).
+        # Camera (owned exclusively by _capture_loop).
+        self._cap: Optional[cv2.VideoCapture] = None
+        self._cap_lock = threading.Lock()
+
+        # Frame pipeline.
+        self._frame_buffer = LatestFrameBuffer()
+
+        # Recognition state.
+        self._track_store = TrackStore()
         self._known_embeddings: list[np.ndarray] = []
         self._known_meta: list[tuple[str, int, str, str]] = []
+        self._embed_lock = threading.Lock()
 
-        # Per-student "last marked at" timestamps for cooldown.
+        # Per-person cooldown (in-memory).
         self._last_seen: dict[tuple[str, int], datetime] = {}
 
+        # Attendance queue.
+        self._attendance_queue: queue.Queue[AttendanceEvent] = queue.Queue(
+            maxsize=ATTENDANCE_QUEUE_MAXSIZE
+        )
+
+        # Shared JPEG publisher for all stream clients.
+        self.stream_publisher = StreamPublisher()
+
+        # Thread handles.
+        self._capture_thread: Optional[threading.Thread] = None
+        self._recognition_thread: Optional[threading.Thread] = None
+        self._publisher_thread: Optional[threading.Thread] = None
+        self._attendance_thread: Optional[threading.Thread] = None
+
+        # Shared output (lock-protected) — read by publisher and snapshot().
         self.lock = threading.Lock()
         self.last_frame: Optional[np.ndarray] = None
         self.last_detections: list[dict] = []
 
+    # ------------------------------------------------------------------ source
     @staticmethod
     def _normalize_source(source: str | int | None) -> str | int:
-        """Coerce camera settings into something OpenCV can open.
-
-        Numeric values are preserved as integers. Blank strings, whitespace,
-        and random text fall back to the default webcam index ``0``.
-        Valid URLs/paths are preserved so RTSP or local video files still work.
-        """
         if source is None:
             return 0
-
         text = str(source).strip()
         if not text:
             return 0
-
         if re.fullmatch(r"[-+]?\d+", text):
             return int(text)
-
         if text.startswith(("rtsp://", "rtmp://", "http://", "https://", "file://")):
             if text.startswith(("http://", "https://")):
                 temp = text.rstrip("/")
                 if not temp.endswith("/video"):
                     text = temp + "/video"
             return text
-
         if text.startswith("/") or os.path.exists(text):
             return text
-
-        # Anything else is treated as an invalid source label and falls back
-        # to the default first camera device. This prevents a whitespace-only
-        # or gibberish string from being passed straight into OpenCV.
         return 0
 
-    # ------------------------------------------------------------------ DB
+    # ------------------------------------------------------------------ embeddings
     def refresh_known_faces(self) -> None:
-        """Reload embeddings + metadata from the database.
-
-        Both Students and Teachers are treated identically. Multi-angle
-        encodings (stored in ``extra_encodings``) are loaded for every
-        person, so any registered angle can match. There is no built-in
-        priority between students and teachers -- whichever embedding is
-        closest (above the configured threshold) wins.
-        """
+        """Reload face embeddings from the database (safe to call while running)."""
         students = Student.query.filter_by(is_active=True).all()
         teachers = Teacher.query.filter_by(is_active=True).all()
         embeddings: list[np.ndarray] = []
         meta: list[tuple[str, int, str, str]] = []
-        student_count = 0
-        teacher_count = 0
-        for person_kind, persons, code_attr in (
+        sc, tc = 0, 0
+        for kind, persons, code_attr in (
             ("student", students, "roll_no"),
             ("teacher", teachers, "teacher_id"),
         ):
             for person in persons:
                 for _angle, emb, _path in iter_known_embeddings(person):
-                    vector = np.asarray(emb, dtype=np.float32).reshape(-1)
-                    if vector.size != 512 or not np.isfinite(vector).all():
+                    v = np.asarray(emb, dtype=np.float32).reshape(-1)
+                    if v.size != 512 or not np.isfinite(v).all():
                         print(
-                            f"[RECOGNITION] skipped {person_kind} id={person.id}: "
-                            f"invalid embedding length={vector.size}; re-enroll this face"
+                            f"[RECOGNITION] skipped {kind} id={person.id}: "
+                            f"bad embedding size={v.size}"
                         )
                         continue
-                    embeddings.append(vector)
-                    meta.append((
-                        person_kind,
-                        person.id,
-                        person.name,
-                        getattr(person, code_attr),
-                    ))
-                    if person_kind == "student":
-                        student_count += 1
+                    embeddings.append(v)
+                    meta.append((kind, person.id, person.name, getattr(person, code_attr)))
+                    if kind == "student":
+                        sc += 1
                     else:
-                        teacher_count += 1
-
-        with self.lock:
+                        tc += 1
+        with self._embed_lock:
             self._known_embeddings = embeddings
             self._known_meta = meta
         print(
-            f"[RECOGNITION] known faces loaded: "
-            f"students={student_count} teachers={teacher_count} total={len(meta)}"
+            f"[RECOGNITION] embeddings loaded: students={sc} teachers={tc} total={len(meta)}"
         )
 
-    def _mark_attendance(self, person_type: str, person_id: int, similarity: float) -> None:
-        """Write live recognition only to enterprise attendance tables."""
-        now = _utcnow()
-        key = (person_type, person_id)
-        last = self._last_seen.get(key)
-        if last and (now - last).total_seconds() < self.cooldown:
-            print(f"[ATTENDANCE] rejected {person_type}={person_id}: cooldown ({self.cooldown}s)")
-            return
-        try:
-            from attendance_service import record_recognition
-            record_recognition(person_type, person_id, self.camera_id, similarity)
-            self._last_seen[key] = now
-        except Exception as exc:
-            db.session.rollback()
-            print(f"[ATTENDANCE] failure {person_type}={person_id}: {type(exc).__name__}: {exc}")
-
-    def _record_unknown_face(self, frame: np.ndarray, box: list[int] | tuple[int, ...], confidence: float, embedding: np.ndarray) -> None:
-        """Unknown face persistence is disabled. This method intentionally does nothing.
-        
-        Unknown faces are still detected and returned as "Unknown" in recognition results,
-        but they are NOT saved to disk, NOT written to the database, and NOT tracked.
-        """
-        # Persistence disabled per requirements: UNKNOWN → NEVER PERSIST
-        return
-
-    # -------------------------------------------------------------- per frame
-    def _process_frame(self, frame: np.ndarray) -> list[dict]:
-        """Run detection + matching on a single frame."""
-        print("[PIPELINE] camera frame received; running face detection")
-        # ``detect_faces`` already returns ``(box, embedding)`` pairs.
-        faces = detect_faces(frame)
-        print(f"[PIPELINE] camera detected faces={len(faces)}")
-
-        with self.lock:
-            known = list(self._known_embeddings)
-            meta = list(self._known_meta)
-
-        detections: list[dict] = []
-        for (top, right, bottom, left), embedding in faces:
-            embedding_np = np.asarray(embedding, dtype=np.float32)
-
-            name, roll, similarity = "Unknown", "-", 0.0
-            if known:
-                # Cosine similarity == dot product because embeddings are L2-normalised.
-                sims = np.asarray(known) @ embedding_np
-                best = int(np.argmax(sims))
-                if sims[best] >= self.threshold:
-                    person_type, person_id, person_name, person_code = meta[best]
-                    name, roll = person_name, person_code
-                    similarity = float(sims[best])
-                    print(f"[RECOGNITION] matched {person_type} id={person_id} name={name} confidence={similarity:.3f}")
-                    self._mark_attendance(person_type, person_id, similarity)
-                else:
-                    similarity = float(sims[best])
-                    print(f"[RECOGNITION] face rejected: confidence={similarity:.3f} threshold={self.threshold:.3f}")
-                    self._record_unknown_face(frame, (top, right, bottom, left), similarity, embedding_np)
-            else:
-                print("[RECOGNITION] face rejected: no enrolled student or teacher encodings")
-                self._record_unknown_face(frame, (top, right, bottom, left), 0.0, embedding_np)
-
-            detections.append(
-                {
-                    "name": name,
-                    "roll": roll,
-                    "confidence": float(similarity),
-                    "box": [int(top), int(right), int(bottom), int(left)],
-                }
-            )
-        return detections
-
+    # ------------------------------------------------------------------ camera
     def _open_capture(self) -> bool:
-        """Internal helper to open cv2.VideoCapture with correct backend and logs."""
-        if self.cap is not None:
+        if self._cap is not None:
             try:
-                self.cap.release()
+                self._cap.release()
             except Exception:
                 pass
-            self.cap = None
+            self._cap = None
 
-        print("Camera URL:")
-        print(self.source)
-
-        # On macOS the default backend (cv2.CAP_ANY) sometimes fails to open
-        # an internal webcam even though CAP_AVFOUNDATION works fine. We pick
-        # the backend explicitly per-platform for local webcams, but use the
-        # default backend for network streams so FFmpeg/GStreamer is used.
+        print(f"[CAPTURE] Opening: {self.source}")
         if platform.system() == "Darwin":
-            source = int(self.source) if str(self.source).isdigit() else self.source
-            if isinstance(source, int):
-                self.cap = cv2.VideoCapture(source, cv2.CAP_AVFOUNDATION)
-            else:
-                self.cap = cv2.VideoCapture(source)
+            src = int(self.source) if str(self.source).isdigit() else self.source
+            cap = (
+                cv2.VideoCapture(src, cv2.CAP_AVFOUNDATION)
+                if isinstance(src, int)
+                else cv2.VideoCapture(src)
+            )
         else:
-            self.cap = cv2.VideoCapture(self.source)
+            cap = cv2.VideoCapture(self.source)
 
-        opened = self.cap.isOpened()
-        print(f"Opened={opened}")
+        if not cap.isOpened():
+            print(f"[CAPTURE] Failed to open: {self.source}")
+            cap.release()
+            return False
 
-        if opened:
-            fps = self.cap.get(cv2.CAP_PROP_FPS)
-            width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            print(f"FPS={fps}")
-            print(f"Frame Width={width}")
-            print(f"Frame Height={height}")
-            try:
-                print("[DEBUG] Backend:", self.cap.getBackendName())
-            except Exception:
-                print("[DEBUG] Backend: <unavailable>")
-        else:
-            print(f"[WARN] Camera source could not be opened: {self.source}")
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAPTURE_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_HEIGHT)
 
-        return opened
+        w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        print(f"[CAPTURE] Opened  {w:.0f}×{h:.0f}  native_fps={fps:.0f}")
+        try:
+            print(f"[CAPTURE] Backend: {cap.getBackendName()}")
+        except Exception:
+            pass
 
-    # ----------------------------------------------------------- lifecycle
+        self._cap = cap
+        return True
+
+    def _warmup(self) -> bool:
+        for _ in range(20):
+            ok, frame = self._cap.read()
+            if ok and frame is not None:
+                if isinstance(self.source, str) and os.path.isfile(self.source):
+                    self._cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                return True
+        return False
+
+    # ------------------------------------------------------------------ lifecycle
     def start(self, app) -> None:
-        """Spawn the background capture loop."""
         if self.running:
             return
 
         self._stop_event.clear()
-        self.refresh_known_faces()
+        try:
+            with app.app_context():
+                self.refresh_known_faces()
+        except Exception as exc:
+            print(f"[RECOGNITION] Warning loading known faces: {exc}")
 
         if not self._open_capture():
-            self.running = False
             return
 
-        # [DEBUG] warm-up loop. Many USB/internal cameras return False for
-        # the first few reads while AVFoundation / V4L2 initialises the
-        # device. Burning through ~20 frames here lets us fail fast on a
-        # genuinely broken source instead of looping forever in _loop().
-        warmup_ok = False
-        for i in range(20):
-            ok, frame = self.cap.read()
-            print(f"Frame={ok}")
-            if ok and frame is not None:
-                warmup_ok = True
-                break
-        if not warmup_ok:
-            print("[DEBUG] Warmup failed: every frame returned False. "
-                  "Camera is not producing frames; aborting start().")
-            if self.cap is not None:
+        if not self._warmup():
+            print("[CAPTURE] Warmup failed — no frames from camera.")
+            if self._cap:
                 try:
-                    self.cap.release()
+                    self._cap.release()
                 except Exception:
                     pass
-                self.cap = None
-            self.running = False
+                self._cap = None
             return
 
         self.running = True
-        # daemon=True so that even if our shutdown hook somehow fails to
-        # run, the worker thread cannot keep the Python process alive and
-        # block the port from being released. ``stop()`` is the preferred
-        # way to tear the thread down; this is just a safety net.
-        self._thread = threading.Thread(
-            target=self._loop,
-            args=(app,),
-            daemon=True,
-            name=f"FaceRecognizer-{self.camera_id or self.source}",
+
+        name_suffix = self.camera_id or self.source
+
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop, daemon=True,
+            name=f"Capture-{name_suffix}",
         )
-        self._thread.start()
+        self._recognition_thread = threading.Thread(
+            target=self._recognition_loop, args=(app,), daemon=True,
+            name=f"Recognition-{name_suffix}",
+        )
+        self._publisher_thread = threading.Thread(
+            target=self._stream_publisher_loop, daemon=True,
+            name=f"Publisher-{name_suffix}",
+        )
+        self._attendance_thread = threading.Thread(
+            target=self._attendance_loop, args=(app,), daemon=True,
+            name=f"Attendance-{name_suffix}",
+        )
+
+        self._capture_thread.start()
+        self._recognition_thread.start()
+        self._publisher_thread.start()
+        self._attendance_thread.start()
+
+        metrics.start_reporter()
 
     def stop(self) -> None:
-        """Stop the background loop and release the capture device.
-
-        Order matters: we *first* release ``self.cap`` (which unblocks the
-        blocking ``cap.read()`` call inside the worker thread), *then*
-        signal the worker to stop, and only then join. This guarantees the
-        worker can actually make progress and exit promptly.
-        """
         self.running = False
         self._stop_event.set()
-        if self.cap is not None:
+
+        # Release camera so _capture_loop's blocking cap.read() returns.
+        with self._cap_lock:
+            cap, self._cap = self._cap, None
+        if cap is not None:
             try:
-                self.cap.release()
+                cap.release()
             except Exception:
                 pass
-        self.cap = None
-        thread = self._thread
-        self._thread = None
-        if thread and thread.is_alive():
-            # daemon=True means join() can return even if the thread is
-            # still alive, but in practice releasing the capture above
-            # makes the worker exit within a few ms. 2s is a hard ceiling.
-            thread.join(timeout=2)
+
+        # Wake attendance loop.
+        try:
+            self._attendance_queue.put_nowait(None)  # type: ignore[arg-type]
+        except queue.Full:
+            pass
+
+        threads = (
+            self._capture_thread,
+            self._recognition_thread,
+            self._publisher_thread,
+            self._attendance_thread,
+        )
+        for t in threads:
+            if t and t.is_alive():
+                t.join(timeout=3)
+
+        self._capture_thread = None
+        self._recognition_thread = None
+        self._publisher_thread = None
+        self._attendance_thread = None
+
         with self.lock:
             self.last_frame = None
             self.last_detections = []
+        self._track_store.clear()
 
-    def _loop(self, app) -> None:
-        """Continuously read frames and run face matching."""
+    # ------------------------------------------------------------------ Thread 1: capture
+    def _capture_loop(self) -> None:
+        """Reads frames from the camera and keeps LatestFrameBuffer current.
+
+        This thread NEVER calls InsightFace. Thermal cost: negligible —
+        just camera bus read + numpy array allocation.
+        """
         consecutive_failures = 0
+
         while self.running and not self._stop_event.is_set():
-            if self.cap is None:
-                print("[DEBUG] Camera capture is None, attempting to reopen...")
+            if self._cap is None:
                 if not self._open_capture():
-                    self._stop_event.wait(2.0)
+                    self._stop_event.wait(CAPTURE_RETRY_SLEEP_S)
                     continue
                 consecutive_failures = 0
 
-            ok, frame = self.cap.read()
-            print(f"Frame={ok}")
+            ok, frame = self._cap.read()
+
+            if not ok or frame is None:
+                # If reading from a local file, rewind to start for continuous looping
+                if isinstance(self.source, str) and os.path.isfile(self.source) and self._cap is not None:
+                    self._cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ok, frame = self._cap.read()
 
             if not ok or frame is None:
                 consecutive_failures += 1
-                print(f"[WARN] Frame read failed (consecutive={consecutive_failures})")
-
-                # Retry immediately up to 3 times
                 if consecutive_failures < 3:
-                    self._stop_event.wait(0.1)
+                    self._stop_event.wait(0.05)
                     continue
-
-                # Reconnect
-                print("[WARN] Too many consecutive frame failures. Releasing and reconnecting...")
-                if self.cap is not None:
-                    try:
-                        self.cap.release()
-                    except Exception:
-                        pass
-                    self.cap = None
-                self._stop_event.wait(2.0)
+                print(f"[CAPTURE] {consecutive_failures} consecutive failures — reconnecting")
+                with self._cap_lock:
+                    if self._cap is not None:
+                        try:
+                            self._cap.release()
+                        except Exception:
+                            pass
+                        self._cap = None
+                self._stop_event.wait(CAPTURE_RETRY_SLEEP_S)
                 continue
 
             consecutive_failures = 0
 
-            try:
-                with app.app_context():
-                    detections = self._process_frame(frame)
-            except Exception:
-                # [DEBUG] print the full traceback so we can see exactly
-                # which step in the pipeline failed.
-                import traceback
-                traceback.print_exc()
-                detections = []
+            # Publish to frame buffer (recognition thread reads from here).
+            self._frame_buffer.put(frame)
 
+            # Always update last_frame for smooth UI streaming — independent
+            # of whether recognition has run recently.
             with self.lock:
                 self.last_frame = frame
-                self.last_detections = detections
+
+            metrics.record_capture()
+
+            # For file-based sources, pace at ~30 FPS camera rate so playback isn't instantaneous
+            if isinstance(self.source, str) and os.path.isfile(self.source):
+                self._stop_event.wait(1.0 / 30.0)
+
+        with self._cap_lock:
+            cap, self._cap = self._cap, None
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception:
+                pass
+        print("[CAPTURE] loop exited")
+
+    # ------------------------------------------------------------------ Thread 2: recognition
+    def _recognition_loop(self, app) -> None:
+        """Rate-gated InsightFace inference — the thermal-efficiency core.
+
+        Instead of running full face detection on every captured frame
+        (which would be 30 InsightFace calls/second at camera rate), this
+        loop sleeps for DETECTION_INTERVAL_S between passes (≈ 6–7 /sec
+        by default) and always grabs the NEWEST available frame via
+        ``latest_nowait()``. Stale frames are never processed.
+
+        Between detection passes the loop is completely idle — no spinning,
+        no polling, no busy-wait.
+        """
+        while self.running and not self._stop_event.is_set():
+            # Interruptible sleep for the detection interval.
+            # Returns True immediately if stop_event is set.
+            if self._stop_event.wait(DETECTION_INTERVAL_S):
+                break  # stop was signalled during the wait
+
+            # Grab the newest available frame (non-blocking).
+            frame, capture_ts = self._frame_buffer.latest_nowait()
+
+            if frame is None:
+                # Camera hasn't produced any frames yet.
+                # Still prune expired tracks so they don't linger in memory.
+                now = time.monotonic()
+                self._track_store.update([], now)
+                with self.lock:
+                    self.last_detections = self._track_store.get_detections_snapshot()
+                continue
+
+            recog_start = time.monotonic()
+            frame_age_ms = (recog_start - capture_ts) * 1000.0
+
+            try:
+                with app.app_context():
+                    self._process_frame(frame, recog_start)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+
+            recog_latency_ms = (time.monotonic() - recog_start) * 1000.0
+            metrics.record_recognition(
+                latency_ms=recog_latency_ms,
+                frame_age_ms=frame_age_ms,
+            )
+
+        print("[RECOGNITION] loop exited")
+
+    def _process_frame(self, frame: np.ndarray, now: float) -> None:
+        """Full detection + tracker update + selective InsightFace recognition."""
+        raw_faces = detect_faces(frame)
+
+        matched, new_tracks, expired = self._track_store.update(raw_faces, now)
+
+        box_to_embedding: dict[tuple[int, int, int, int], np.ndarray] = {
+            box: np.asarray(emb, dtype=np.float32)
+            for box, emb in raw_faces
+        }
+
+        with self._embed_lock:
+            known = list(self._known_embeddings)
+            meta = list(self._known_meta)
+
+        known_matrix: Optional[np.ndarray] = np.stack(known) if known else None
+        tracks_to_recognize = self._track_store.tracks_needing_recognition(now)
+
+        for track in tracks_to_recognize:
+            embedding = box_to_embedding.get(track.box)
+            if embedding is None:
+                best_iou, best_emb = 0.0, None
+                for box, emb in raw_faces:
+                    score = _iou(track.box, box)
+                    if score > best_iou:
+                        best_iou = score
+                        best_emb = np.asarray(emb, dtype=np.float32)
+                if best_emb is None or best_iou < 0.1:
+                    continue
+                embedding = best_emb
+
+            name, roll, similarity = "Unknown", "-", 0.0
+            person_type: Optional[str] = None
+            person_id: Optional[int] = None
+
+            if known_matrix is not None:
+                sims = known_matrix @ embedding
+                best_idx = int(np.argmax(sims))
+                best_sim = float(sims[best_idx])
+                if best_sim >= self.threshold:
+                    ptype, pid, pname, pcode = meta[best_idx]
+                    name, roll, similarity = pname, pcode, best_sim
+                    person_type, person_id = ptype, pid
+                else:
+                    similarity = best_sim
+
+            self._track_store.update_identity(track.track_id, name, roll, similarity, now)
+
+            if person_type is not None and person_id is not None:
+                key = (person_type, person_id)
+                last = self._last_seen.get(key)
+                if last is None or (_utcnow() - last).total_seconds() >= self.cooldown:
+                    event = AttendanceEvent(
+                        person_type=person_type,
+                        person_id=person_id,
+                        camera_id=self.camera_id,
+                        confidence=similarity,
+                        timestamp=_utcnow(),
+                    )
+                    try:
+                        self._attendance_queue.put_nowait(event)
+                        self._last_seen[key] = event.timestamp
+                    except queue.Full:
+                        print("[ATTENDANCE] queue full — event dropped")
+
+        with self.lock:
+            self.last_detections = self._track_store.get_detections_snapshot()
+
+    # ------------------------------------------------------------------ Thread 3: publisher
+    def _stream_publisher_loop(self) -> None:
+        """Encode the annotated frame as JPEG ONCE and publish for all viewers.
+
+        Thermal optimization: completely idle when no browser clients are
+        connected (``stream_publisher.has_subscribers`` is False). When a
+        viewer connects, encoding starts; when the last viewer disconnects,
+        it stops. This eliminates continuous JPEG work during unattended
+        operation.
+
+        Encoding runs at most STREAM_TARGET_FPS times per second; the actual
+        interval may be longer if JPEG encoding takes more time than the gap.
+        All sleeps are interruptible via the stop event.
+        """
+        _interval = 1.0 / STREAM_TARGET_FPS
+
+        while self.running and not self._stop_event.is_set():
+
+            # If nobody is watching, sleep cheaply and check again.
+            if not self.stream_publisher.has_subscribers:
+                self._stop_event.wait(0.5)
+                continue
+
+            t0 = time.monotonic()
+
+            with self.lock:
+                frame = self.last_frame
+                dets = list(self.last_detections)
+
+            if frame is not None:
+                display = frame.copy()
+                for d in dets:
+                    top, right, bottom, left = d["box"]
+                    color = (0, 200, 0) if d["name"] != "Unknown" else (0, 0, 200)
+                    cv2.rectangle(display, (left, top), (right, bottom), color, 2)
+                    label = f"{d['name']} ({d['confidence']:.2f})"
+                    cv2.putText(
+                        display, label,
+                        (left, max(top - 8, 12)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
+                    )
+                ok, buf = cv2.imencode(
+                    ".jpg", display,
+                    [cv2.IMWRITE_JPEG_QUALITY, STREAM_JPEG_QUALITY],
+                )
+                if ok:
+                    self.stream_publisher.publish(buf.tobytes())
+                    metrics.record_stream()
+
+            elapsed = time.monotonic() - t0
+            sleep_time = _interval - elapsed
+            if sleep_time > 0:
+                self._stop_event.wait(sleep_time)  # interruptible
+
+        print("[PUBLISHER] loop exited")
+
+    # ------------------------------------------------------------------ Thread 4: attendance
+    def _attendance_loop(self, app) -> None:
+        """Drain the attendance queue and write to the database.
+
+        Runs entirely independently of the camera and recognition threads.
+        SQLite stalls never affect capture FPS or recognition latency.
+        """
+        while True:
+            try:
+                event = self._attendance_queue.get(timeout=2.0)
+            except queue.Empty:
+                if not self.running and self._stop_event.is_set():
+                    break
+                continue
+
+            if event is None:  # sentinel from stop()
+                break
+
+            db_start = time.monotonic()
+            try:
+                with app.app_context():
+                    from attendance_service import record_recognition as _record
+                    _record(
+                        event.person_type,
+                        event.person_id,
+                        event.camera_id,
+                        event.confidence,
+                        now=event.timestamp,
+                    )
+            except Exception as exc:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                print(f"[ATTENDANCE] write failed: {type(exc).__name__}: {exc}")
+            finally:
+                metrics.record_db((time.monotonic() - db_start) * 1000.0)
+                self._attendance_queue.task_done()
+
+        print("[ATTENDANCE] loop exited")

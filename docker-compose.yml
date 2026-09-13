@@ -1,0 +1,45 @@
+services:
+  attendance-os:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: attendance-os:latest
+    container_name: attendance-os
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5001}:5000"
+    environment:
+      - FLASK_SECRET=${FLASK_SECRET:-attendance-os-production-secret-change-me}
+      - FLASK_DEBUG=${FLASK_DEBUG:-false}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///krishna_erp.db}
+      - CAMERA_SOURCE=${CAMERA_SOURCE:-0}
+      - ATTENDANCE_COOLDOWN_SECONDS=${ATTENDANCE_COOLDOWN_SECONDS:-300}
+      - FACE_MATCH_THRESHOLD=${FACE_MATCH_THRESHOLD:-0.35}
+      - USE_OLLAMA=${USE_OLLAMA:-false}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-phi3:mini}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET:-}
+      - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}
+      - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
+      - APPLE_KEY_ID=${APPLE_KEY_ID:-}
+      - APPLE_PRIVATE_KEY=${APPLE_PRIVATE_KEY:-}
+    volumes:
+      - attendance_instance:/app/instance
+      - attendance_faces:/app/static/known_faces
+      - insightface_models:/root/.insightface/models
+
+volumes:
+  attendance_instance:
+    driver: local
+  attendance_faces:
+    driver: local
+  insightface_models:
+    driver: local

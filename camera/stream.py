@@ -70,11 +70,7 @@ class RecognitionManager:
             try:
                 recognizer.stop()
             except Exception:
-                # Never let a single bad recognizer prevent the rest of
-                # the shutdown from completing.
                 pass
-        # Drop our last references to the Flask app objects so any
-        # SQLAlchemy engines that may still be attached can be GC'd.
         del apps
 
     def reset_shutdown(self) -> None:
@@ -88,14 +84,15 @@ class RecognitionManager:
         recognizer = self.recognizers.get(camera_id)
         if recognizer is None:
             return None, []
-        # [DEBUG] show whether the recognizer has produced a frame yet
-        # and how many detections it has stored.
-        print(
-            f"[DEBUG] snapshot frame={'YES' if recognizer.last_frame is not None else 'NO'} "
-            f"detections={len(recognizer.last_detections)}"
-        )
         with recognizer.lock:
             return recognizer.last_frame, recognizer.last_detections
+
+    def get_publisher(self, camera_id: int):
+        """Return the StreamPublisher for ``camera_id``, or None if not running."""
+        recognizer = self.recognizers.get(camera_id)
+        if recognizer is None:
+            return None
+        return recognizer.stream_publisher
 
     def refresh_known(self) -> None:
         """Tell every running recognizer to reload its embeddings."""

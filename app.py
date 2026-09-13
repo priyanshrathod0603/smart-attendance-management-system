@@ -1708,44 +1708,45 @@ h1 {{ color: #1d1d1f; }}
             manager.start(Camera.query.get_or_404(cid), app)
 
         def gen():
-            while True:
-                # Check if camera/recognizer is still active and running in manager
-                rec = manager.recognizers.get(cid)
-                if rec is None or not rec.running:
-                    print(f"[DEBUG] Camera {cid} is not active or running. Stopping stream.")
-                    break
+            """MJPEG generator — reads pre-encoded JPEG from shared publisher.
 
-                frame, dets = manager.snapshot(cid)
-                if frame is None:
-                    time.sleep(0.1)
-                    continue
-                for d in dets:
-                    t, r, b, l = d["box"]
-                    color = (0, 200, 0) if d["name"] != "Unknown" else (0, 0, 200)
-                    cv2.rectangle(frame, (l, t), (r, b), color, 2)
-                    label = f"{d['name']} ({d['confidence']:.2f})"
-                    cv2.putText(
-                        frame,
-                        label,
-                        (l, max(t - 8, 12)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        color,
-                        1,
-                    )
-                # [DEBUG] before encoding, confirm we actually have a frame
-                # and that detections came back from the recognizer.
-                print(
-                    f"[DEBUG] Streaming frame={'YES' if frame is not None else 'NO'} "
-                    f"detections={len(dets)}"
-                )
-                ok, buf = cv2.imencode(".jpg", frame)
-                if not ok:
-                    continue
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
-                )
+            JPEG encoding happens exactly ONCE per frame (in the publisher
+            thread), regardless of how many browser clients are connected.
+            subscribe()/unsubscribe() signals the publisher thread to work
+            or idle based on whether any viewer is present.
+            """
+            publisher = manager.get_publisher(cid)
+            if publisher is None:
+                return
+
+            publisher.subscribe()
+            last_seq = 0
+            try:
+                while True:
+                    # Verify the camera/recognizer is still running.
+                    rec = manager.recognizers.get(cid)
+                    if rec is None or not rec.running:
+                        break
+
+                    # Block until a new JPEG frame is ready (timeout = 0.5s
+                    # so we re-check the running state regularly).
+                    seq, jpeg_bytes = publisher.get(last_seq, timeout=0.5)
+
+                    if seq == last_seq:
+                        # Timeout — loop again and recheck running state.
+                        continue
+
+                    last_seq = seq
+                    if jpeg_bytes:
+                        yield (
+                            b"--frame\r\n"
+                            b"Content-Type: image/jpeg\r\n\r\n"
+                            + jpeg_bytes
+                            + b"\r\n"
+                        )
+            finally:
+                # This runs when the client disconnects (generator GC or close).
+                publisher.unsubscribe()
 
         return Response(gen(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -1778,16 +1779,30 @@ def _resolve_port(default_port: int = 5000) -> int:
 
 
 if __name__ == "__main__":
-    with app.app_context():
-        cam = Camera.query.filter_by(is_active=True).first()
-        if cam:
-            try:
-                manager.start(cam, app)
-            except Exception as exc:
-                print(f"[WARN] startup camera initialization skipped: {exc}")
+    # Guard against Flask's debug-mode reloader spawning a second process.
+    # When use_reloader=True (the default in debug mode), Werkzeug forks a
+    # child process and sets WERKZEUG_RUN_MAIN=true in that child. Without
+    # this guard, manager.start() executes in BOTH the parent watcher process
+    # AND the child worker process, producing duplicate camera workers.
+    #
+    # We disable use_reloader entirely so the camera thread starts exactly once.
+    # Production deployments should set FLASK_DEBUG=false anyway.
+    _is_reloader_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    if not _is_reloader_child:
+        # Single-process mode or reloader disabled — start camera now.
+        with app.app_context():
+            cam = Camera.query.filter_by(is_active=True).first()
+            if cam:
+                try:
+                    manager.start(cam, app)
+                except Exception as exc:
+                    print(f"[WARN] startup camera initialization skipped: {exc}")
+
     app.run(
         host="0.0.0.0",
         port=_resolve_port(),
         debug=app.config["DEBUG"],
+        use_reloader=False,   # prevents duplicate camera workers on debug mode
         threaded=True,
     )
+

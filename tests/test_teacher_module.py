@@ -20,6 +20,8 @@ def client():
         "TESTING": True,
         "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
         "WTF_CSRF_ENABLED": False,
+        "AUTH_SESSION_HOURS": 12,
+        "AUTH_VERIFICATION_HOURS": 24,
     })
     with app.test_client() as client:
         with app.app_context():
@@ -45,19 +47,18 @@ def _authenticate(client):
         "csrf_token": _csrf(signup),
         "name": "Test Administrator",
         "email": "admin@example.test",
-        "password": "CorrectHorse1",
+        "password": "AdminPass1",
     })
     # Bypass email verification in tests by directly setting verified_at
-    with client.application.app_context():
-        user = User.query.filter_by(email="admin@example.test").one()
-        user.email_verified_at = utcnow()
-        _db.session.commit()
+    user = User.query.filter_by(email="admin@example.test").one()
+    user.email_verified_at = utcnow()
+    _db.session.commit()
     # Login
     login = client.get("/login")
     response = client.post("/login", data={
         "csrf_token": _csrf(login),
         "email": "admin@example.test",
-        "password": "CorrectHorse1",
+        "password": "AdminPass1",
     }, follow_redirects=True)
     assert response.status_code == 200, (
         f"Expected 200 after login+redirect, got {response.status_code}"

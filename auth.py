@@ -421,7 +421,8 @@ def auth_context():
 # ---------------------------------------------------------------------------
 
 def _password_ok(password: str) -> bool:
-    return len(password) >= 12 and all(re.search(pattern, password) for pattern in (r"[a-z]", r"[A-Z]", r"\d"))
+    """Validate password: 6-12 characters, must contain upper, lower, and number."""
+    return 6 <= len(password) <= 12 and all(re.search(pattern, password) for pattern in (r"[a-z]", r"[A-Z]", r"\d"))
 
 
 # ---------------------------------------------------------------------------
@@ -759,7 +760,7 @@ def signup():
         email, name = (request.form.get("email") or "").strip().lower(), (request.form.get("name") or "").strip()
         password = request.form.get("password") or ""
         if not name or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) or not _password_ok(password):
-            return render_template("auth/signup.html", error="Use a valid email and a 12+ character password with upper-, lower-case letters and a number."), 400
+            return render_template("auth/signup.html", error="Use a valid email and a password between 6 and 12 characters with upper-, lower-case letters and a number."), 400
         if User.query.filter_by(email=email).first():
             return render_template("auth/signup.html", error="An account already exists for this email."), 409
         user = User(email=email, name=name, password_hash=ph.hash(password), role="super_admin" if User.query.count() == 0 else "employee")
@@ -810,7 +811,7 @@ def reset_password(token: str):
             return render_template("auth/reset_password.html", error="Your form expired. Please try again."), 400
         password = request.form.get("password") or ""
         if not _password_ok(password):
-            return render_template("auth/reset_password.html", error="Use a 12+ character password with upper-, lower-case letters and a number."), 400
+            return render_template("auth/reset_password.html", error="Use a password between 6 and 12 characters with upper-, lower-case letters and a number."), 400
         user = db.session.get(User, row.user_id)
         user.password_hash, row.used_at = ph.hash(password), utcnow()
         AuthSession.query.filter_by(user_id=user.id, revoked_at=None).update({"revoked_at": utcnow()})
@@ -868,7 +869,7 @@ def change_password():
         except (VerifyMismatchError, VerificationError, InvalidHashError):
             valid = False
         if not valid or not _password_ok(new):
-            return render_template("auth/account.html", section="security", sessions=[], error="Use your current password and a 12+ character password with upper-, lower-case letters and a number."), 400
+            return render_template("auth/account.html", section="security", sessions=[], error="Use your current password and a password between 6 and 12 characters with upper-, lower-case letters and a number."), 400
         g.user.password_hash = ph.hash(new)
         AuthSession.query.filter_by(user_id=g.user.id, revoked_at=None).update({"revoked_at": utcnow()})
         _event(g.user.email, "password_changed", g.user)

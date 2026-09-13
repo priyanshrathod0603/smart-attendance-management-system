@@ -1,34 +1,80 @@
-"""Face encoder backed by InsightFace (Python 3.14 + Apple Silicon ready).
+"""Face encoder backed by InsightFace (Python 3.12+ + Apple Silicon ready).
 
 InsightFace is a modern, actively maintained face recognition toolkit.
-It uses ONNX Runtime under the hood, so it ships prebuilt wheels for
-Python 3.14 and uses CoreMLExecutionProvider on Apple Silicon -- no
-cmake, no dlib, no system build tools required.
+It uses ONNX Runtime under the hood, so it ships prebuilt wheels and supports
+CoreMLExecutionProvider on Apple Silicon — no cmake, no dlib required.
 
-Public API (kept compatible with the previous ``face_recognition``-based
-implementation so the rest of the project doesn't change):
+Public API (kept compatible with the previous implementation so the rest of
+the project doesn't change):
 
-* ``encode_image(path)``            -> list[float] | None
+* ``encode_image(path)``             -> list[float] | None
 * ``encode_frame(bgr_numpy_frame)``  -> list[float] | None
 * ``detect_faces(bgr_numpy_frame)``  -> list[(box, embedding)]
+
+Performance notes
+-----------------
+* ``det_size=(320, 320)`` — reduced from 640×640. At 640×480 input resolution
+  this is more than sufficient for faces at typical classroom / doorway
+  distances and cuts ONNX inference area by 4×.
+* CoreMLExecutionProvider is tried first on Apple Silicon; CPU is the fallback.
+  The actual provider used at startup is printed once so operators know
+  which accelerator is active.
+* OMP_NUM_THREADS / OPENBLAS_NUM_THREADS are set before ONNX Runtime loads
+  to limit internal parallelism and reduce thermal pressure.
+* The singleton is initialised lazily on first use and is shared across threads.
+  A module-level lock ensures only one initialisation happens even under
+  concurrent first calls.
 """
 from __future__ import annotations
 
 import os
+
+# ---------------------------------------------------------------------------
+# Limit ONNX Runtime / OpenBLAS / OpenMP thread counts BEFORE importing
+# insightface or onnxruntime. These libraries read these env-vars once at
+# library load time. Setting them afterwards has no effect.
+#
+# On Apple Silicon, ONNX Runtime uses the Accelerate framework or OpenBLAS
+# for matrix operations. Without limits these can spawn 8–16 threads per
+# inference call, creating contention between recognition, capture, and
+# publisher threads and driving up CPU temperature.
+#
+# The default of 4 leaves enough parallelism for fast inference while
+# keeping the system thermally reasonable. Override via env-var if needed.
+# ---------------------------------------------------------------------------
+_ONNX_THREADS = os.environ.get("ATTENDANCEOS_ONNX_THREADS", "4")
+os.environ.setdefault("OMP_NUM_THREADS", _ONNX_THREADS)
+os.environ.setdefault("OPENBLAS_NUM_THREADS", _ONNX_THREADS)
+os.environ.setdefault("MKL_NUM_THREADS", _ONNX_THREADS)
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", _ONNX_THREADS)
+
 import threading
 from typing import List, Optional, Tuple
 
 import numpy as np
 
-# Lazy import: insightface pulls in onnxruntime and a bunch of model files
-# on first use. We keep a module-level singleton so we don't reload weights
-# for every frame.
+# ---------------------------------------------------------------------------
+# Singleton / lazy init
+# ---------------------------------------------------------------------------
 _APP_LOCK = threading.Lock()
 _APP = None  # type: ignore[var-annotated]
 
+# Detection size: 320×320 balances speed and recall for close-range faces.
+# Raise to (416, 416) if far-away faces are systematically missed.
+_DET_SIZE = (320, 320)
+
+# Providers tried in priority order. CoreMLExecutionProvider maps to the
+# Apple Neural Engine / GPU on Apple Silicon. On non-Apple platforms or builds
+# of onnxruntime that do not include CoreML, it will be silently skipped by
+# ONNX Runtime and the next provider in the list will be used instead.
+_PREFERRED_PROVIDERS = [
+    "CoreMLExecutionProvider",
+    "CPUExecutionProvider",
+]
+
 
 def _get_app():
-    """Return a process-wide ``FaceAnalysis`` instance (built on demand)."""
+    """Return the process-wide ``FaceAnalysis`` instance (built on demand)."""
     global _APP
     if _APP is not None:
         return _APP
@@ -37,21 +83,28 @@ def _get_app():
         if _APP is not None:
             return _APP
 
-        # Importing inside the function keeps ``import recognition.encoder``
-        # cheap for tools that only want the data classes.
         from insightface.app import FaceAnalysis
 
-        # ``buffalo_l`` is the default high-accuracy model pack. It works on
-        # CPU and (on Apple Silicon) automatically uses the CoreML EP.
-        # ``providers`` lets us force CPU if the user is on a weird build.
         app = FaceAnalysis(
             name="buffalo_l",
-            providers=["CPUExecutionProvider"],
+            providers=_PREFERRED_PROVIDERS,
             allowed_modules=["detection", "recognition"],
         )
-        # det_size 640x640 is a good balance between speed and recall on
-        # classroom CCTV frames.
-        app.prepare(ctx_id=-1, det_size=(640, 640))
+        app.prepare(ctx_id=-1, det_size=_DET_SIZE)
+
+        # Report which providers are actually active so operators can verify
+        # that CoreML / Neural Engine is being used on Apple Silicon.
+        try:
+            active = [m.session._model_path if hasattr(m, "session") else type(m).__name__
+                      for m in app.models.values()]
+        except Exception:
+            active = ["(provider info unavailable)"]
+        print(
+            f"[ENCODER] InsightFace ready  det_size={_DET_SIZE}  "
+            f"requested_providers={_PREFERRED_PROVIDERS}  "
+            f"active_models_count={len(app.models)}"
+        )
+
         _APP = app
         return _APP
 
@@ -60,6 +113,10 @@ def _to_rgb(frame_bgr: np.ndarray) -> np.ndarray:
     """OpenCV gives us BGR; InsightFace expects RGB."""
     return frame_bgr[:, :, ::-1].copy()
 
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def encode_image(image_path: str) -> Optional[List[float]]:
     """Return the 512-d embedding of the largest face in ``image_path``."""

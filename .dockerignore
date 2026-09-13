@@ -1,0 +1,36 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Git and OS metadata
+.git/
+.gitignore
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor & AI Tool artifacts
+.aider*
+.zcode/
+.ai/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local instance database and runtime logs
+instance/*.db
+instance/*.db-journal
+*.log
+
+# Face storage during dev
+static/known_faces/*
+!static/known_faces/.gitkeep
