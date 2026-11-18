@@ -26,9 +26,12 @@ class UTCDateTime(TypeDecorator):
 class User(db.Model):
     __tablename__ = "auth_users"
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(254), unique=True, nullable=False, index=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    email = db.Column(db.String(254), nullable=False, index=True)
     password_hash = db.Column(db.String(255))
     name = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(30), nullable=True)
+    employee_id = db.Column(db.String(50), nullable=True)
     role = db.Column(db.String(32), nullable=False, default="employee")
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     department = db.Column(db.String(120))
@@ -38,6 +41,27 @@ class User(db.Model):
     locked_until = db.Column(UTCDateTime())
     last_login_at = db.Column(UTCDateTime())
     created_at = db.Column(UTCDateTime(), nullable=False, default=utcnow)
+
+    school = db.relationship("School", backref=db.backref("users", lazy=True))
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "school_name": self.school.name if self.school else None,
+            "school_identifier": self.school.school_id if self.school else None,
+            "email": self.email,
+            "name": self.name,
+            "phone": self.phone,
+            "employee_id": self.employee_id,
+            "role": self.role,
+            "department": self.department,
+            "is_active": self.is_active,
+            "avatar_url": self.avatar_url,
+            "email_verified": self.email_verified_at is not None,
+            "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
 
 class AuthSession(db.Model):
     __tablename__ = "auth_sessions"

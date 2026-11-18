@@ -21,6 +21,7 @@ from typing import Optional
 from flask import Blueprint, Response, jsonify, request
 from sqlalchemy import and_, func, or_
 
+from auth import current_school_id, is_tenant_permitted
 from database.db import db
 from database.models import Attendance, Camera, Student, Teacher, UnknownFace
 
@@ -78,7 +79,7 @@ def _as_bool(value) -> bool:
 def get_rules(scope: str):
     if scope not in {"teacher", "student"}:
         return jsonify({"error": "scope must be 'teacher' or 'student'"}), 400
-    rule = get_active_rules(scope)
+    rule = get_active_rules(scope, school_id=current_school_id())
     return jsonify(rule.to_dict())
 
 
@@ -89,7 +90,8 @@ def put_rules(scope: str):
     denied = _require_admin()
     if denied:
         return denied
-    rule = get_active_rules(scope)
+    sid = current_school_id()
+    rule = get_active_rules(scope, school_id=sid)
     data = request.get_json(force=True) or {}
     field_names = [
         "office_start", "late_grace_time", "half_day_time", "absent_after_time",
@@ -120,7 +122,7 @@ def put_rules(scope: str):
                 new = new.strip()
             setattr(rule, key, new)
             if old != new:
-                audit("rule", rule.id, key, old, new, reason=reason)
+                audit("rule", rule.id, key, old, new, reason=reason, school_id=sid)
     db.session.commit()
     return jsonify(rule.to_dict())
 
@@ -132,20 +134,24 @@ def reset_rules(scope: str):
     denied = _require_admin()
     if denied:
         return denied
-    rule = get_active_rules(scope)
+    sid = current_school_id()
+    rule = get_active_rules(scope, school_id=sid)
     # Re-seed by deleting and letting get_active_rules recreate
     db.session.delete(rule)
     db.session.commit()
-    rule = get_active_rules(scope)
-    audit("rule", rule.id, "reset", "defaults", "defaults", reason="reset to defaults")
+    rule = get_active_rules(scope, school_id=sid)
+    audit("rule", rule.id, "reset", "defaults", "defaults", reason="reset to defaults", school_id=sid)
     return jsonify(rule.to_dict())
 
 
 # --------------------------------------------------------------------- holidays
 @bp.route("/holidays", methods=["GET", "POST"])
 def holidays():
+    sid = current_school_id()
     if request.method == "GET":
         q = AttendanceHoliday.query.order_by(AttendanceHoliday.holiday_date.desc())
+        if sid:
+            q = q.filter((AttendanceHoliday.school_id == sid) | (AttendanceHoliday.school_id.is_(None)))
         scope = request.args.get("scope")
         if scope:
             q = q.filter(or_(AttendanceHoliday.scope == scope, AttendanceHoliday.scope == "all"))
@@ -164,14 +170,14 @@ def holidays():
         d = datetime.strptime(d_raw, "%Y-%m-%d").date()
     except ValueError:
         return jsonify({"error": "holiday_date must be YYYY-MM-DD"}), 400
-    h = AttendanceHoliday(holiday_date=d, name=name, kind=kind, scope=scope)
+    h = AttendanceHoliday(holiday_date=d, name=name, kind=kind, scope=scope, school_id=sid)
     db.session.add(h)
     try:
         db.session.commit()
     except Exception:
         db.session.rollback()
         return jsonify({"error": "a holiday for that date and scope already exists"}), 409
-    audit("holiday", h.id, "create", None, f"{d.isoformat()}:{name}", reason="")
+    audit("holiday", h.id, "create", None, f"{d.isoformat()}:{name}", reason="", school_id=sid)
     return jsonify(h.to_dict()), 201
 
 
@@ -212,7 +218,10 @@ def holiday_detail(hid: int):
 # --------------------------------------------------------------------- sessions
 @bp.route("/sessions", methods=["GET"])
 def list_sessions():
+    sid = current_school_id()
     q = AttendanceSession.query
+    if sid:
+        q = q.filter(AttendanceSession.school_id == sid)
     d = _parse_date_arg("date")
     if d:
         q = q.filter(AttendanceSession.session_date == d)
@@ -233,6 +242,8 @@ def list_sessions():
             q = q.filter(Student.class_name == class_name)
         if section:
             q = q.filter(Student.section == section)
+        if sid:
+            q = q.filter(Student.school_id == sid)
     search = (request.args.get("q") or "").strip()
     if search:
         like = f"%{search.lower()}%"
@@ -259,6 +270,8 @@ def list_sessions():
 @bp.route("/sessions/<int:sid>", methods=["GET"])
 def session_detail(sid: int):
     s = AttendanceSession.query.get_or_404(sid)
+    if not is_tenant_permitted(s.school_id):
+        return jsonify({"error": "not found"}), 404
     d = s.to_dict()
     stu = Student.query.get(s.student_id)
     if stu:
@@ -275,19 +288,22 @@ def session_edit(sid: int):
     if denied:
         return denied
     s = AttendanceSession.query.get_or_404(sid)
+    if not is_tenant_permitted(s.school_id):
+        return jsonify({"error": "not found"}), 404
+    sch_id = current_school_id()
     data = request.get_json(force=True) or {}
     reason = (data.get("reason") or "").strip()
     if "in_time" in data and data["in_time"]:
         try:
             new = _parse_iso(data["in_time"])
-            audit("session", s.id, "in_time", s.in_time, new, reason=reason)
+            audit("session", s.id, "in_time", s.in_time, new, reason=reason, school_id=sch_id)
             s.in_time = new
         except (TypeError, ValueError):
             return jsonify({"error": "in_time must be ISO-8601"}), 400
     if "out_time" in data and data["out_time"]:
         try:
             new = _parse_iso(data["out_time"])
-            audit("session", s.id, "out_time", s.out_time, new, reason=reason)
+            audit("session", s.id, "out_time", s.out_time, new, reason=reason, school_id=sch_id)
             s.out_time = new
         except (TypeError, ValueError):
             return jsonify({"error": "out_time must be ISO-8601"}), 400
@@ -295,10 +311,10 @@ def session_edit(sid: int):
         old = s.status_detail
         s.status_detail = (data["status_detail"] or "present").strip()
         s.manual_status = s.status_detail
-        audit("session", s.id, "status_detail", old, s.status_detail, reason=reason)
+        audit("session", s.id, "status_detail", old, s.status_detail, reason=reason, school_id=sch_id)
     if "notes" in data:
         s.notes = data["notes"]
-        audit("session", s.id, "notes", None, s.notes, reason=reason)
+        audit("session", s.id, "notes", None, s.notes, reason=reason, school_id=sch_id)
     db.session.commit()
     return jsonify(s.to_dict())
 
@@ -316,6 +332,7 @@ def _parse_iso(raw: str) -> datetime:
 @bp.route("/attendance/extended", methods=["GET"])
 def attendance_extended():
     """Same filter API as ``/api/attendance`` but joined to ``attendance_session``."""
+    sid = current_school_id()
     d = _parse_date_arg("date")
     class_name = request.args.get("class_name")
     section = request.args.get("section")
@@ -324,6 +341,8 @@ def attendance_extended():
     event_type = request.args.get("event_type")
 
     q = Attendance.query
+    if sid:
+        q = q.filter(Attendance.school_id == sid)
     if d:
         q = q.filter(func.date(Attendance.timestamp) == d)
     if cid:
@@ -336,6 +355,8 @@ def attendance_extended():
             q = q.filter(Student.class_name == class_name)
         if section:
             q = q.filter(Student.section == section)
+        if sid:
+            q = q.filter(Student.school_id == sid)
         if search:
             like = f"%{search.lower()}%"
             q = q.filter(or_(
@@ -369,6 +390,9 @@ def attendance_edit_with_audit(aid: int):
     if denied:
         return denied
     record = Attendance.query.get_or_404(aid)
+    if not is_tenant_permitted(record.school_id):
+        return jsonify({"error": "not found"}), 404
+    sch_id = current_school_id()
     data = request.get_json(force=True) or {}
     reason = (data.get("reason") or "").strip()
     if "in_time" in data or "out_time" in data or "status_detail" in data:
@@ -384,6 +408,7 @@ def attendance_edit_with_audit(aid: int):
                 sess = AttendanceSession(
                     student_id=record.student_id,
                     session_date=record.timestamp.date() if record.timestamp else _date.today(),
+                    school_id=sch_id or record.school_id,
                 )
                 db.session.add(sess)
                 db.session.commit()
@@ -393,14 +418,14 @@ def attendance_edit_with_audit(aid: int):
         if "in_time" in data and data["in_time"]:
             try:
                 new = _parse_iso(data["in_time"])
-                audit("session", sess.id, "in_time", sess.in_time, new, reason=reason)
+                audit("session", sess.id, "in_time", sess.in_time, new, reason=reason, school_id=sch_id)
                 sess.in_time = new
             except (TypeError, ValueError):
                 return jsonify({"error": "in_time must be ISO-8601"}), 400
         if "out_time" in data and data["out_time"]:
             try:
                 new = _parse_iso(data["out_time"])
-                audit("session", sess.id, "out_time", sess.out_time, new, reason=reason)
+                audit("session", sess.id, "out_time", sess.out_time, new, reason=reason, school_id=sch_id)
                 sess.out_time = new
             except (TypeError, ValueError):
                 return jsonify({"error": "out_time must be ISO-8601"}), 400
@@ -408,7 +433,7 @@ def attendance_edit_with_audit(aid: int):
             old = sess.status_detail
             sess.status_detail = (data["status_detail"] or "present").strip()
             sess.manual_status = sess.status_detail
-            audit("session", sess.id, "status_detail", old, sess.status_detail, reason=reason)
+            audit("session", sess.id, "status_detail", old, sess.status_detail, reason=reason, school_id=sch_id)
         db.session.commit()
         return jsonify(sess.to_dict())
     # Direct attendance-row edits (mirror the legacy /api/attendance/<id> PUT)
@@ -417,7 +442,7 @@ def attendance_edit_with_audit(aid: int):
             old = getattr(record, key)
             new = data[key]
             setattr(record, key, new)
-            audit("attendance", record.id, key, old, new, reason=reason)
+            audit("attendance", record.id, key, old, new, reason=reason, school_id=sch_id)
     record.manual_edit = True
     db.session.commit()
     return jsonify(record.to_dict())
@@ -426,7 +451,10 @@ def attendance_edit_with_audit(aid: int):
 # --------------------------------------------------------------------- audit log
 @bp.route("/audit-log", methods=["GET"])
 def audit_log():
+    sid = current_school_id()
     q = AttendanceAuditLog.query.order_by(AttendanceAuditLog.edited_at.desc())
+    if sid:
+        q = q.filter(AttendanceAuditLog.school_id == sid)
     entity = request.args.get("entity_type")
     if entity:
         q = q.filter(AttendanceAuditLog.entity_type == entity)
@@ -443,11 +471,14 @@ def _today_utc() -> date:
 
 @bp.route("/dashboard/summary", methods=["GET"])
 def dashboard_summary():
+    sid = current_school_id()
     d = _parse_date_arg("date") or _today_utc()
     class_name = request.args.get("class_name")
     section = request.args.get("section")
 
     student_q = Student.query.filter_by(is_active=True)
+    if sid:
+        student_q = student_q.filter_by(school_id=sid)
     if class_name:
         student_q = student_q.filter_by(class_name=class_name)
     if section:
@@ -455,12 +486,16 @@ def dashboard_summary():
     total_students = student_q.count()
 
     sess_q = AttendanceSession.query.filter(AttendanceSession.session_date == d)
+    if sid:
+        sess_q = sess_q.filter(AttendanceSession.school_id == sid)
     if class_name or section:
         sess_q = sess_q.join(Student, Student.id == AttendanceSession.student_id)
         if class_name:
             sess_q = sess_q.filter(Student.class_name == class_name)
         if section:
             sess_q = sess_q.filter(Student.section == section)
+        if sid:
+            sess_q = sess_q.filter(Student.school_id == sid)
     sessions_today = sess_q.all()
     sessions_with_student = {s.student_id: s for s in sessions_today}
 
@@ -473,8 +508,13 @@ def dashboard_summary():
     currently_inside = sum(1 for s in sessions_today if s.in_time and not s.out_time)
     currently_outside = sum(1 for s in sessions_today if s.in_time and s.out_time)
 
-    unknown_today = UnknownFace.query.filter(func.date(UnknownFace.timestamp) == d).count()
-    active_cams = Camera.query.filter_by(is_active=True).count()
+    q_unk = UnknownFace.query.filter(func.date(UnknownFace.timestamp) == d)
+    q_cam = Camera.query.filter_by(is_active=True)
+    if sid:
+        q_unk = q_unk.filter(UnknownFace.school_id == sid)
+        q_cam = q_cam.filter(Camera.school_id == sid)
+    unknown_today = q_unk.count()
+    active_cams = q_cam.count()
 
     in_times = [s.in_time for s in sessions_today if s.in_time]
     out_times = [s.out_time for s in sessions_today if s.out_time]
@@ -496,7 +536,7 @@ def dashboard_summary():
         "active_cameras": active_cams,
         "average_in_time": avg_in,
         "average_out_time": avg_out,
-        "is_holiday": is_holiday(d, "all"),
+        "is_holiday": is_holiday(d, "all", school_id=sid),
     })
 
 
@@ -540,13 +580,18 @@ def reports(rptype: str):
 
 
 def _session_query(class_name, section, search):
+    sid = current_school_id()
     q = AttendanceSession.query
+    if sid:
+        q = q.filter(AttendanceSession.school_id == sid)
     if class_name or section or search:
         q = q.join(Student, Student.id == AttendanceSession.student_id)
         if class_name:
             q = q.filter(Student.class_name == class_name)
         if section:
             q = q.filter(Student.section == section)
+        if sid:
+            q = q.filter(Student.school_id == sid)
         if search:
             like = f"%{search.lower()}%"
             q = q.filter(or_(

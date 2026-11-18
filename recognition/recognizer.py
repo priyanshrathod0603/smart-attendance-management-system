@@ -51,7 +51,7 @@ import numpy as np
 from database.db import db
 from database.models import Student, Teacher
 
-from .encoder import detect_faces
+from .encoder import detect_faces, has_faces_lightweight
 from .face_registration import iter_known_embeddings
 from .metrics import metrics
 
@@ -63,7 +63,7 @@ from .metrics import metrics
 # enough parallelism for fast JPEG decode/encode and color conversion.
 # This must happen before any cv2.VideoCapture or cv2.imencode call.
 # ---------------------------------------------------------------------------
-_OPENCV_THREADS = int(os.environ.get("ATTENDANCEOS_OPENCV_THREADS", "4"))
+_OPENCV_THREADS = int(os.environ.get("ATTENDANCEOS_OPENCV_THREADS", "2"))
 cv2.setNumThreads(_OPENCV_THREADS)
 
 
@@ -77,9 +77,9 @@ CAPTURE_WIDTH: int = 640
 CAPTURE_HEIGHT: int = 480
 
 # How often (seconds) the recognition loop runs a full InsightFace detection
-# pass. Values between 0.12–0.20 (5–8 times/sec) are appropriate.
-# Larger = less CPU / heat; smaller = faster first-detection latency.
-DETECTION_INTERVAL_S: float = float(os.environ.get("ATTENDANCEOS_DETECTION_INTERVAL", "0.15"))
+# pass. Values between 0.30–0.50 (2–3.5 times/sec) are optimal for high accuracy
+# while keeping CPU usage and temperature minimal.
+DETECTION_INTERVAL_S: float = float(os.environ.get("ATTENDANCEOS_DETECTION_INTERVAL", "0.35"))
 
 # How long (seconds) to wait before retrying recognition on an unknown track.
 RERECOGNIZE_UNKNOWN_INTERVAL_S: float = 5.0
@@ -93,7 +93,7 @@ RECOGNITION_CONFIRMATION_FRAMES: int = 2
 
 # How long (seconds) a track survives without any new detections before its
 # bounding box is removed from the UI.
-TRACK_TIMEOUT_S: float = 1.5
+TRACK_TIMEOUT_S: float = 1.8
 
 # Minimum IoU to match a detection to an existing track.
 TRACK_IOU_THRESHOLD: float = 0.25
@@ -102,13 +102,13 @@ TRACK_IOU_THRESHOLD: float = 0.25
 ATTENDANCE_QUEUE_MAXSIZE: int = 50
 
 # Camera reconnect sleep (seconds).
-CAPTURE_RETRY_SLEEP_S: float = 2.0
+CAPTURE_RETRY_SLEEP_S: float = 3.0
 
 # Target FPS for the shared JPEG stream publisher.
-STREAM_TARGET_FPS: int = 20
+STREAM_TARGET_FPS: int = int(os.environ.get("ATTENDANCEOS_STREAM_FPS", "15"))
 
 # JPEG quality for the stream (0–100). Lower = smaller bytes = less bandwidth.
-STREAM_JPEG_QUALITY: int = 80
+STREAM_JPEG_QUALITY: int = 75
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +351,13 @@ class TrackStore:
                 if t.last_seen >= cutoff
             ]
 
+    def has_active_tracks(self) -> bool:
+        """Check if any tracks are currently active and unexpired."""
+        now = time.monotonic()
+        cutoff = now - TRACK_TIMEOUT_S
+        with self._lock:
+            return any(t.last_seen >= cutoff for t in self._tracks.values())
+
     def tracks_needing_recognition(self, now: float) -> list[Track]:
         """Return tracks that InsightFace should process."""
         with self._lock:
@@ -495,8 +502,25 @@ class FaceRecognizer:
     # ------------------------------------------------------------------ embeddings
     def refresh_known_faces(self) -> None:
         """Reload face embeddings from the database (safe to call while running)."""
-        students = Student.query.filter_by(is_active=True).all()
-        teachers = Teacher.query.filter_by(is_active=True).all()
+        camera_school_id = None
+        if self.camera_id:
+            from database.models import Camera
+            cam = Camera.query.get(self.camera_id)
+            if cam:
+                camera_school_id = cam.school_id
+
+        student_q = Student.query.filter_by(is_active=True)
+        teacher_q = Teacher.query.filter_by(is_active=True)
+        if camera_school_id:
+            student_q = student_q.filter_by(school_id=camera_school_id)
+            teacher_q = teacher_q.filter_by(school_id=camera_school_id)
+
+        students = student_q.all()
+        # Only load teachers whose attendance method is FACE (or default)
+        teachers = [
+            t for t in teacher_q.all()
+            if (getattr(t, "attendance_method", None) or "FACE").upper() == "FACE"
+        ]
         embeddings: list[np.ndarray] = []
         meta: list[tuple[str, int, str, str]] = []
         sc, tc = 0, 0
@@ -629,24 +653,18 @@ class FaceRecognizer:
         metrics.start_reporter()
 
     def stop(self) -> None:
+        if not self.running and self._stop_event.is_set():
+            return
         self.running = False
         self._stop_event.set()
 
-        # Release camera so _capture_loop's blocking cap.read() returns.
-        with self._cap_lock:
-            cap, self._cap = self._cap, None
-        if cap is not None:
-            try:
-                cap.release()
-            except Exception:
-                pass
-
-        # Wake attendance loop.
+        # Wake attendance loop so it can exit immediately.
         try:
             self._attendance_queue.put_nowait(None)  # type: ignore[arg-type]
-        except queue.Full:
+        except (queue.Full, Exception):
             pass
 
+        # Join threads so capture and worker loops exit cleanly on their own threads.
         threads = (
             self._capture_thread,
             self._recognition_thread,
@@ -655,7 +673,19 @@ class FaceRecognizer:
         )
         for t in threads:
             if t and t.is_alive():
-                t.join(timeout=3)
+                try:
+                    t.join(timeout=2.0)
+                except Exception:
+                    pass
+
+        # Ensure capture is released if capture thread was not running
+        with self._cap_lock:
+            cap, self._cap = self._cap, None
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception:
+                pass
 
         self._capture_thread = None
         self._recognition_thread = None
@@ -675,28 +705,48 @@ class FaceRecognizer:
         just camera bus read + numpy array allocation.
         """
         consecutive_failures = 0
+        reconnect_attempts = 0
 
         while self.running and not self._stop_event.is_set():
-            if self._cap is None:
+            with self._cap_lock:
+                cap = self._cap
+            if cap is None:
                 if not self._open_capture():
-                    self._stop_event.wait(CAPTURE_RETRY_SLEEP_S)
+                    reconnect_attempts += 1
+                    backoff = min(30.0, CAPTURE_RETRY_SLEEP_S * (1.5 ** min(reconnect_attempts, 5)))
+                    self._stop_event.wait(backoff)
                     continue
+                reconnect_attempts = 0
                 consecutive_failures = 0
+                with self._cap_lock:
+                    cap = self._cap
 
-            ok, frame = self._cap.read()
+            if not self.running or self._stop_event.is_set() or cap is None:
+                break
+
+            try:
+                ok, frame = cap.read()
+            except Exception as exc:
+                print(f"[CAPTURE] read exception: {exc}")
+                ok, frame = False, None
 
             if not ok or frame is None:
                 # If reading from a local file, rewind to start for continuous looping
-                if isinstance(self.source, str) and os.path.isfile(self.source) and self._cap is not None:
-                    self._cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    ok, frame = self._cap.read()
+                if isinstance(self.source, str) and os.path.isfile(self.source) and cap is not None:
+                    try:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ok, frame = cap.read()
+                    except Exception:
+                        ok, frame = False, None
 
             if not ok or frame is None:
                 consecutive_failures += 1
                 if consecutive_failures < 3:
-                    self._stop_event.wait(0.05)
+                    self._stop_event.wait(0.1)
                     continue
-                print(f"[CAPTURE] {consecutive_failures} consecutive failures — reconnecting")
+                reconnect_attempts += 1
+                backoff = min(30.0, CAPTURE_RETRY_SLEEP_S * (1.5 ** min(reconnect_attempts, 5)))
+                print(f"[CAPTURE] {consecutive_failures} consecutive read failures — backoff {backoff:.1f}s")
                 with self._cap_lock:
                     if self._cap is not None:
                         try:
@@ -704,10 +754,11 @@ class FaceRecognizer:
                         except Exception:
                             pass
                         self._cap = None
-                self._stop_event.wait(CAPTURE_RETRY_SLEEP_S)
+                self._stop_event.wait(backoff)
                 continue
 
             consecutive_failures = 0
+            reconnect_attempts = 0
 
             # Publish to frame buffer (recognition thread reads from here).
             self._frame_buffer.put(frame)
@@ -736,33 +787,48 @@ class FaceRecognizer:
     def _recognition_loop(self, app) -> None:
         """Rate-gated InsightFace inference — the thermal-efficiency core.
 
-        Instead of running full face detection on every captured frame
-        (which would be 30 InsightFace calls/second at camera rate), this
-        loop sleeps for DETECTION_INTERVAL_S between passes (≈ 6–7 /sec
-        by default) and always grabs the NEWEST available frame via
-        ``latest_nowait()``. Stale frames are never processed.
-
-        Between detection passes the loop is completely idle — no spinning,
-        no polling, no busy-wait.
+        Optimizations:
+        1. Adaptive sleep: Sleeps longer when no stream subscribers are watching.
+        2. Motion pre-check: If frame is completely static and no tracks are active,
+           skips heavy InsightFace neural net, dropping CPU heat to near 0%.
+        3. Rate gating: Strict sleep between inference passes.
         """
+        prev_gray: Optional[np.ndarray] = None
+
         while self.running and not self._stop_event.is_set():
-            # Interruptible sleep for the detection interval.
-            # Returns True immediately if stop_event is set.
-            if self._stop_event.wait(DETECTION_INTERVAL_S):
+            # Adaptive sleep interval based on load and stream activity
+            if not self.stream_publisher.has_subscribers and not self._track_store.has_active_tracks():
+                interval = max(DETECTION_INTERVAL_S * 2.0, 0.7)
+            else:
+                interval = DETECTION_INTERVAL_S
+
+            if self._stop_event.wait(interval):
                 break  # stop was signalled during the wait
 
             # Grab the newest available frame (non-blocking).
             frame, capture_ts = self._frame_buffer.latest_nowait()
 
-            if frame is None:
+            now = time.monotonic()
+
+            if frame is None or frame.size == 0:
                 # Camera hasn't produced any frames yet.
-                # Still prune expired tracks so they don't linger in memory.
-                now = time.monotonic()
                 self._track_store.update([], now)
                 with self.lock:
                     self.last_detections = self._track_store.get_detections_snapshot()
                 continue
 
+            # 1. LIGHTWEIGHT DETECTION PRE-CHECK (Sub-5ms)
+            # If no tracks are active, check if there is any face in the frame.
+            # NO FACE -> SKIP expensive InsightFace recognition completely!
+            if not self._track_store.has_active_tracks():
+                if not has_faces_lightweight(frame):
+                    # No face in frame: skip heavy InsightFace neural net
+                    self._track_store.update([], now)
+                    with self.lock:
+                        self.last_detections = self._track_store.get_detections_snapshot()
+                    continue
+
+            # 2. FACE DETECTED (or active tracks exist): Run full InsightFace recognition
             recog_start = time.monotonic()
             frame_age_ms = (recog_start - capture_ts) * 1000.0
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Students - Krishna English School ERP{% endblock %}
+{% block title %}Students - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="users"></i><span>Students</span>
   {% if active_class %}<i data-lucide="chevron-right" class="nav-chevron"></i><span>{{ active_class }}</span>{% endif %}

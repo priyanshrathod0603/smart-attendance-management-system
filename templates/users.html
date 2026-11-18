@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+{% block title %}User Management - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
+{% block crumbs %}
+  <i data-lucide="shield-check"></i><span>User Management</span>
+{% endblock %}
+{% block content %}
+<section class="stats" id="users-stats">
+  <div class="stat-card glass">
+    <div class="stat-icon blue"><i data-lucide="users"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Total Users</div>
+      <div class="stat-value" id="stat-user-total">0</div>
+      <div class="stat-trend">institutional accounts</div>
+    </div>
+  </div>
+  <div class="stat-card glass">
+    <div class="stat-icon green"><i data-lucide="user-check"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Active Users</div>
+      <div class="stat-value" id="stat-user-active">0</div>
+      <div class="stat-trend">authorized</div>
+    </div>
+  </div>
+  <div class="stat-card glass">
+    <div class="stat-icon purple"><i data-lucide="shield"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Admins &amp; Staff</div>
+      <div class="stat-value" id="stat-user-admins">0</div>
+      <div class="stat-trend">elevated roles</div>
+    </div>
+  </div>
+  <div class="stat-card glass">
+    <div class="stat-icon amber"><i data-lucide="building-2"></i></div>
+    <div class="stat-body">
+      <div class="stat-label">Institution Scope</div>
+      <div class="stat-value" style="font-size:1.1rem;word-break:break-all;">{{ current_school.school_id if current_school else 'Default' }}</div>
+      <div class="stat-trend">{{ current_school.name if current_school else 'Current Institution' }}</div>
+    </div>
+  </div>
+</section>
+
+<section class="card glass filters">
+  <div class="filter-row">
+    <div class="filter-field grow">
+      <label>Search Users</label>
+      <div class="search">
+        <i data-lucide="search"></i>
+        <input id="filter-user-search" type="search" placeholder="Search by name, email, or role..." />
+      </div>
+    </div>
+    <div class="filter-field">
+      <label>Filter Role</label>
+      <select id="filter-user-role" class="form-select">
+        <option value="">All Roles</option>
+        <option value="super_admin">Super Admin</option>
+        <option value="institution_admin">Institution Admin</option>
+        <option value="principal">Principal</option>
+        <option value="vice_principal">Vice Principal</option>
+        <option value="dean">Dean</option>
+        <option value="academic_coordinator">Academic Coordinator</option>
+        <option value="department_head">Department Head</option>
+        <option value="teacher">Teacher</option>
+        <option value="accountant">Accountant</option>
+        <option value="hr_manager">HR Manager</option>
+        <option value="front_desk">Front Desk</option>
+        <option value="attendance_operator">Attendance Operator</option>
+        <option value="support_agent">Support Agent</option>
+        <option value="auditor">Auditor</option>
+        <option value="viewer">Viewer</option>
+      </select>
+    </div>
+    <div class="filter-field">
+      <label>&nbsp;</label>
+      <button id="btn-add-user" type="button" class="btn-primary">
+        <i data-lucide="user-plus"></i> Add User
+      </button>
+    </div>
+  </div>
+</section>
+
+<section class="card glass">
+  <div class="card-head">
+    <h2>Institutional Users &amp; Permissions</h2>
+    <span class="muted small" id="users-count">--</span>
+  </div>
+  <div class="table-scroll">
+    <table id="users-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email &amp; Phone</th>
+          <th>Role</th>
+          <th>Institution</th>
+          <th>Verified</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr><td colspan="7" class="empty">Loading users...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============== Add / Edit User Modal ============== -->
+<div id="user-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document" style="max-width:540px;">
+    <header class="modal-head">
+      <h3 id="user-modal-title">Add Staff / User Account</h3>
+      <button class="modal-x" data-close="1" aria-label="Close" type="button">&times;</button>
+    </header>
+    <form id="user-form" class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <input type="hidden" id="user-edit-id" value="">
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label for="u-name" style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Full Name *</label>
+          <input id="u-name" name="name" type="text" class="form-input" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.25);color:#fff;box-sizing:border-box;" required placeholder="e.g. Rahul Sharma">
+        </div>
+        <div>
+          <label for="u-email" style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Email Address *</label>
+          <input id="u-email" name="email" type="email" class="form-input" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.25);color:#fff;box-sizing:border-box;" required placeholder="staff@institution.com">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label for="u-phone" style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Phone Number</label>
+          <input id="u-phone" name="phone" type="tel" class="form-input" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.25);color:#fff;box-sizing:border-box;" placeholder="+91 98765 43210">
+        </div>
+        <div>
+          <label for="u-employee-id" style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Employee / Staff ID</label>
+          <input id="u-employee-id" name="employee_id" type="text" class="form-input" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.25);color:#fff;box-sizing:border-box;" placeholder="EMP-1001">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label for="u-role" style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">System Role *</label>
+          <select id="u-role" name="role" class="form-select" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:#1e2230;color:#fff;box-sizing:border-box;" required>
+            <option value="teacher" selected>Teacher</option>
+            <option value="principal">Principal</option>
+            <option value="vice_principal">Vice Principal</option>
+            <option value="dean">Dean</option>
+            <option value="academic_coordinator">Academic Coordinator</option>
+            <option value="department_head">Department Head</option>
+            <option value="accountant">Accountant</option>
+            <option value="hr_manager">HR Manager</option>
+            <option value="front_desk">Front Desk</option>
+            <option value="attendance_operator">Attendance Operator</option>
+            <option value="institution_admin">Institution Admin</option>
+            <option value="support_agent">Support Agent</option>
+            <option value="auditor">Auditor</option>
+            <option value="viewer">Viewer</option>
+            {% if current_user and current_user.role == 'super_admin' %}
+            <option value="super_admin">Super Admin (Platform)</option>
+            {% endif %}
+          </select>
+        </div>
+        <div>
+          <label for="u-department" style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Department</label>
+          <input id="u-department" name="department" type="text" class="form-input" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.25);color:#fff;box-sizing:border-box;" placeholder="e.g. Science / Mathematics">
+        </div>
+      </div>
+
+      <div id="u-password-container">
+        <label for="u-password" style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Password (6–12 chars with upper, lower, digit) *</label>
+        <input id="u-password" name="password" type="password" class="form-input" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.25);color:#fff;box-sizing:border-box;" placeholder="Set staff login password">
+      </div>
+
+      <div id="user-modal-error" style="display:none;color:#ff6b6b;font-size:13px;background:rgba(255,0,0,0.1);padding:8px;border-radius:6px;"></div>
+
+      <footer class="modal-foot" style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button id="btn-save-user" class="btn-primary" type="submit">Save Staff Account</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const tbody = document.getElementById('users-tbody');
+  const searchInput = document.getElementById('filter-user-search');
+  const roleSelect = document.getElementById('filter-user-role');
+  const countEl = document.getElementById('users-count');
+  const modal = document.getElementById('user-modal');
+  const userForm = document.getElementById('user-form');
+  const btnAdd = document.getElementById('btn-add-user');
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+  let allUsers = [];
+
+  function showModal() {
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideModal() {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function fetchUsers() {
+    fetch('/api/users')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          allUsers = data;
+        } else if (data && Array.isArray(data.users)) {
+          allUsers = data.users;
+        } else {
+          allUsers = [];
+        }
+        renderUsers();
+        updateStats();
+      })
+      .catch(err => {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">Error loading staff users: ${err.message || 'Network error'}</td></tr>`;
+      });
+  }
+
+  function updateStats() {
+    document.getElementById('stat-user-total').textContent = allUsers.length;
+    document.getElementById('stat-user-active').textContent = allUsers.filter(u => u.is_active).length;
+    document.getElementById('stat-user-admins').textContent = allUsers.filter(u => ['super_admin', 'institution_admin', 'admin', 'principal'].includes(u.role)).length;
+  }
+
+  function renderUsers() {
+    const q = (searchInput.value || '').toLowerCase();
+    const r = (roleSelect.value || '').toLowerCase();
+
+    const filtered = allUsers.filter(u => {
+      const matchQ = !q || (u.name && u.name.toLowerCase().includes(q)) || (u.email && u.email.toLowerCase().includes(q)) || (u.role && u.role.toLowerCase().includes(q)) || (u.department && u.department.toLowerCase().includes(q));
+      const matchR = !r || (u.role && u.role.toLowerCase() === r);
+      return matchQ && matchR;
+    });
+
+    countEl.textContent = `${filtered.length} staff users`;
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" class="empty">No staff users found matching filters.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(u => {
+      const roleLabel = (u.role || '').replace(/_/g, ' ').toUpperCase();
+      const statusBadge = u.is_active 
+        ? `<span class="badge green" style="cursor:pointer;" onclick="toggleUserActive(${u.id}, false)">Active</span>`
+        : `<span class="badge red" style="cursor:pointer;" onclick="toggleUserActive(${u.id}, true)">Inactive</span>`;
+      const verifiedBadge = u.email_verified
+        ? `<span style="color:#10b981;font-weight:600;">✓ Verified</span>`
+        : `<span style="color:#f59e0b;font-weight:600;">Pending</span>`;
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(u.name || '')}</strong>
+            ${u.department ? `<div class="muted small">${escapeHtml(u.department)}</div>` : ''}
+          </td>
+          <td>
+            <div>${escapeHtml(u.email || '')}</div>
+            <small class="muted">${escapeHtml(u.phone || 'No phone')}</small>
+          </td>
+          <td><span class="badge blue">${roleLabel}</span></td>
+          <td><small class="muted">${escapeHtml(u.school_name || u.school_identifier || 'Current Institution')}</small></td>
+          <td>${verifiedBadge}</td>
+          <td>${statusBadge}</td>
+          <td>
+            <div style="display:flex;gap:6px;">
+              <button class="btn-xs btn-secondary" type="button" onclick="openEditUser(${u.id})">Edit</button>
+              <button class="btn-xs btn-danger" type="button" onclick="deleteUser(${u.id})">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  window.toggleUserActive = function(id, newState) {
+    fetch(`/api/users/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      },
+      body: JSON.stringify({ is_active: newState })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.id || data.status === 'success' || data.ok) {
+        fetchUsers();
+      } else {
+        alert(data.message || data.error || 'Failed to update user status.');
+      }
+    })
+    .catch(err => alert('Network error updating user status.'));
+  };
+
+  window.openEditUser = function(id) {
+    const u = allUsers.find(x => x.id === id);
+    if (!u) return;
+    document.getElementById('user-edit-id').value = u.id;
+    document.getElementById('u-name').value = u.name || '';
+    document.getElementById('u-email').value = u.email || '';
+    document.getElementById('u-email').disabled = true;
+    document.getElementById('u-role').value = u.role || 'teacher';
+    document.getElementById('u-phone').value = u.phone || '';
+    document.getElementById('u-employee-id').value = u.employee_id || '';
+    document.getElementById('u-department').value = u.department || '';
+    document.getElementById('u-password').value = '';
+    document.getElementById('u-password').placeholder = 'Leave blank to keep current password';
+    document.getElementById('user-modal-title').textContent = 'Edit Staff / User Account';
+    document.getElementById('user-modal-error').style.display = 'none';
+    showModal();
+  };
+
+  window.deleteUser = function(id) {
+    if (!confirm('Are you sure you want to deactivate/delete this staff account?')) return;
+    fetch(`/api/users/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'X-CSRF-Token': csrfToken
+      }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.ok || data.status === 'success' || data.id) {
+        fetchUsers();
+      } else {
+        alert(data.message || data.error || 'Failed to delete user.');
+      }
+    })
+    .catch(err => alert('Network error deleting user.'));
+  };
+
+  if (btnAdd) {
+    btnAdd.addEventListener('click', () => {
+      document.getElementById('user-edit-id').value = '';
+      document.getElementById('u-name').value = '';
+      document.getElementById('u-email').value = '';
+      document.getElementById('u-email').disabled = false;
+      document.getElementById('u-role').value = 'teacher';
+      document.getElementById('u-phone').value = '';
+      document.getElementById('u-employee-id').value = '';
+      document.getElementById('u-department').value = '';
+      document.getElementById('u-password').value = '';
+      document.getElementById('u-password').placeholder = 'Set staff login password (default: School@123)';
+      document.getElementById('user-modal-title').textContent = 'Add Staff / User Account';
+      document.getElementById('user-modal-error').style.display = 'none';
+      showModal();
+    });
+  }
+
+  modal.querySelectorAll('[data-close="1"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      hideModal();
+    });
+  });
+
+  userForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = document.getElementById('user-edit-id').value;
+    const name = document.getElementById('u-name').value.trim();
+    const email = document.getElementById('u-email').value.trim();
+    const role = document.getElementById('u-role').value;
+    const phone = document.getElementById('u-phone').value.trim();
+    const employee_id = document.getElementById('u-employee-id').value.trim();
+    const department = document.getElementById('u-department').value.trim();
+    const password = document.getElementById('u-password').value;
+    const errEl = document.getElementById('user-modal-error');
+
+    const payload = { name, role, phone, employee_id, department };
+    if (password) payload.password = password;
+    if (!id) payload.email = email;
+
+    const url = id ? `/api/users/${id}` : '/api/users';
+    const method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.id || data.status === 'success') {
+        hideModal();
+        fetchUsers();
+      } else {
+        errEl.textContent = data.message || data.error || 'An error occurred';
+        errEl.style.display = 'block';
+      }
+    })
+    .catch(err => {
+      errEl.textContent = 'Server connection error.';
+      errEl.style.display = 'block';
+    });
+  });
+
+  searchInput.addEventListener('input', renderUsers);
+  roleSelect.addEventListener('change', renderUsers);
+
+  fetchUsers();
+});
+</script>
+{% endblock %}

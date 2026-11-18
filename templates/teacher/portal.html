@@ -1,0 +1,1056 @@
+{% extends "base.html" %}
+
+{% block title %}Teacher Portal — {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
+
+{% block crumbs %}
+  <a href="{{ url_for('page_teacher_portal') }}">Teacher Portal</a>
+  <span class="sep">/</span>
+  <span class="current" id="portal-crumb-title">Dashboard</span>
+{% endblock %}
+
+{% block head %}
+<style>
+/* Teacher Portal Specific Styles */
+.portal-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-bottom: 40px;
+}
+
+.portal-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--glass-border);
+  scrollbar-width: none;
+}
+.portal-tabs::-webkit-scrollbar {
+  display: none;
+}
+.portal-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+.portal-tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--glass-bg);
+}
+.portal-tab-btn.active {
+  color: var(--accent);
+  background: white;
+  border-color: rgba(0, 122, 255, 0.2);
+  box-shadow: var(--shadow-sm);
+}
+
+.portal-hero {
+  background: linear-gradient(135deg, rgba(0, 122, 255, 0.08) 0%, rgba(90, 200, 250, 0.05) 100%), var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(20px);
+}
+.portal-hero-info {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.portal-hero-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px var(--accent-glow);
+  flex-shrink: 0;
+}
+.portal-hero-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.portal-hero-sub {
+  font-size: 14px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.portal-hero-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Today's Punch Card */
+.today-card {
+  background: white;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-md);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media (max-width: 768px) {
+  .today-card {
+    grid-template-columns: 1fr;
+  }
+}
+.today-status-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-right: 1px solid var(--glass-border-light);
+  padding-right: 20px;
+}
+@media (max-width: 768px) {
+  .today-status-box {
+    border-right: none;
+    border-bottom: 1px solid var(--glass-border-light);
+    padding-right: 0;
+    padding-bottom: 20px;
+  }
+}
+.today-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+.metric-box {
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.metric-box .label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.metric-box .val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.metric-box .sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* Stat Grid */
+.stat-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.stat-card-p {
+  background: white;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.stat-card-p:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.stat-card-p .icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.stat-card-p .icon-blue { background: rgba(0, 122, 255, 0.1); color: var(--accent); }
+.stat-card-p .icon-green { background: rgba(52, 199, 89, 0.1); color: var(--success); }
+.stat-card-p .icon-orange { background: rgba(255, 149, 0, 0.1); color: var(--warning); }
+.stat-card-p .icon-purple { background: rgba(175, 82, 222, 0.1); color: #af52de; }
+
+.stat-card-p .info {
+  display: flex;
+  flex-direction: column;
+}
+.stat-card-p .info .title {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.stat-card-p .info .value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+/* Status Badges */
+.badge-present { background: rgba(52, 199, 89, 0.15); color: #248a3d; border: 1px solid rgba(52, 199, 89, 0.3); }
+.badge-late { background: rgba(255, 149, 0, 0.15); color: #b36800; border: 1px solid rgba(255, 149, 0, 0.3); }
+.badge-absent { background: rgba(255, 59, 48, 0.15); color: #c41c13; border: 1px solid rgba(255, 59, 48, 0.3); }
+.badge-leave { background: rgba(175, 82, 222, 0.15); color: #8e2cb8; border: 1px solid rgba(175, 82, 222, 0.3); }
+.badge-holiday { background: rgba(0, 122, 255, 0.15); color: #0056b3; border: 1px solid rgba(0, 122, 255, 0.3); }
+.badge-weekly_off { background: rgba(142, 142, 147, 0.15); color: #555558; border: 1px solid rgba(142, 142, 147, 0.3); }
+.badge-half_day { background: rgba(255, 204, 0, 0.2); color: #997a00; border: 1px solid rgba(255, 204, 0, 0.4); }
+.badge-pending { background: rgba(255, 149, 0, 0.12); color: #b36800; }
+.badge-approved { background: rgba(52, 199, 89, 0.15); color: #248a3d; }
+.badge-rejected { background: rgba(255, 59, 48, 0.15); color: #c41c13; }
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* Method badge */
+.method-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--glass-border);
+}
+
+/* Responsive History Table / Mobile Cards */
+.history-table-wrap {
+  background: white;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+.history-table th {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--glass-border);
+  white-space: nowrap;
+}
+.history-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+.history-table tr:hover td {
+  background: rgba(0, 122, 255, 0.02);
+}
+
+/* Mobile cards fallback for history on small screens */
+.mobile-history-cards {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (max-width: 768px) {
+  .history-table-wrap {
+    display: none;
+  }
+  .mobile-history-cards {
+    display: flex;
+  }
+}
+.m-hist-card {
+  background: white;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.m-hist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.m-hist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  font-size: 13px;
+}
+.m-hist-grid .item {
+  display: flex;
+  flex-direction: column;
+}
+.m-hist-grid .item-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.m-hist-grid .item-val {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Filter Bar */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: white;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.filter-inputs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.filter-input {
+  padding: 8px 12px;
+  border: 1px solid var(--glass-border-light);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Summary Progress Card */
+.summary-progress-card {
+  background: white;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+}
+.progress-bar-wrap {
+  width: 100%;
+  height: 12px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin: 12px 0;
+  display: flex;
+}
+.progress-segment {
+  height: 100%;
+}
+
+/* Form Styles */
+.portal-form-card {
+  background: white;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.portal-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.form-group input, .form-group select, .form-group textarea {
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* Buttons */
+.btn-p-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  background: var(--accent);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+.btn-p-primary:hover {
+  background: #0066d6;
+  transform: translateY(-1px);
+}
+.btn-p-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.btn-p-secondary:hover {
+  background: var(--bg-primary);
+}
+.btn-p-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.empty-state i {
+  font-size: 36px;
+  color: var(--text-tertiary);
+}
+
+/* Tabs content visibility */
+.tab-content {
+  display: none;
+  flex-direction: column;
+  gap: 20px;
+}
+.tab-content.active {
+  display: flex;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="portal-container" id="teacher-portal-root" data-active-tab="{{ active_tab|default('dashboard') }}">
+
+  <!-- Top Hero / Banner -->
+  <div class="portal-hero">
+    <div class="portal-hero-info">
+      <div class="portal-hero-avatar" id="t-avatar">T</div>
+      <div>
+        <div class="portal-hero-name" id="t-name">Loading Profile...</div>
+        <div class="portal-hero-sub">
+          <span id="t-id-badge" class="badge">Teacher ID: --</span>
+          <span class="sep">•</span>
+          <span id="t-dept-desig">--</span>
+          <span class="sep">•</span>
+          <span id="t-status-pill" class="status-pill badge-present">Active</span>
+        </div>
+      </div>
+    </div>
+    <div class="portal-hero-actions">
+      <button class="btn-p-primary" id="btn-quick-leave" type="button">
+        <i data-lucide="calendar-plus"></i> Apply Leave
+      </button>
+      <button class="btn-p-secondary" id="btn-quick-correct" type="button">
+        <i data-lucide="clock-alert"></i> Request Correction
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigation Tab Bar -->
+  <div class="portal-tabs" role="tablist">
+    <button class="portal-tab-btn {% if (active_tab|default('dashboard')) == 'dashboard' %}active{% endif %}" data-tab="dashboard" role="tab">
+      <i data-lucide="layout-dashboard"></i> Today &amp; Overview
+    </button>
+    <button class="portal-tab-btn {% if active_tab == 'attendance' %}active{% endif %}" data-tab="attendance" role="tab">
+      <i data-lucide="calendar-check"></i> Attendance History
+    </button>
+    <button class="portal-tab-btn {% if active_tab == 'summary' %}active{% endif %}" data-tab="summary" role="tab">
+      <i data-lucide="file-spreadsheet"></i> Monthly Summary
+    </button>
+    <button class="portal-tab-btn {% if active_tab == 'leave' %}active{% endif %}" data-tab="leave" role="tab">
+      <i data-lucide="calendar-days"></i> Leaves (<span id="tab-leaves-count">0</span>)
+    </button>
+    <button class="portal-tab-btn {% if active_tab == 'corrections' %}active{% endif %}" data-tab="corrections" role="tab">
+      <i data-lucide="clock-alert"></i> Corrections (<span id="tab-corrections-count">0</span>)
+    </button>
+    <button class="portal-tab-btn {% if active_tab == 'profile' %}active{% endif %}" data-tab="profile" role="tab">
+      <i data-lucide="user-check"></i> My Profile
+    </button>
+  </div>
+
+  <!-- ================================================================= TAB 1: DASHBOARD -->
+  <section id="tab-dashboard" class="tab-content {% if (active_tab|default('dashboard')) == 'dashboard' %}active{% endif %}">
+    
+    <!-- Today's Attendance Card -->
+    <div class="today-card">
+      <div class="today-status-box">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 13px; color: var(--text-secondary); font-weight: 600;" id="today-full-date">Today</div>
+            <div style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-top: 2px;">Today's Punch Status</div>
+          </div>
+          <span id="today-status-badge" class="status-pill badge-present" style="font-size: 14px; padding: 6px 14px;">Present</span>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+          <span class="method-pill" id="today-method-pill">
+            <i data-lucide="scan-face"></i> <span id="today-method-text">Face Recognition</span>
+          </span>
+          <span id="today-late-chip" class="status-pill badge-late" style="display: none; font-size: 11px;">Late: 15m</span>
+        </div>
+
+        <div style="font-size: 12px; color: var(--text-tertiary); margin-top: auto;">
+          Shift Hours: <span id="today-shift-text">08:00 AM - 04:00 PM</span>
+        </div>
+      </div>
+
+      <div class="today-metrics-grid">
+        <div class="metric-box">
+          <span class="label"><i data-lucide="log-in" style="width:14px; vertical-align:middle;"></i> Punch IN</span>
+          <span class="val" id="today-in-time">--:--</span>
+          <span class="sub" id="today-in-camera">Main Entrance</span>
+        </div>
+        <div class="metric-box">
+          <span class="label"><i data-lucide="log-out" style="width:14px; vertical-align:middle;"></i> Punch OUT</span>
+          <span class="val" id="today-out-time">--:--</span>
+          <span class="sub" id="today-out-camera">--</span>
+        </div>
+        <div class="metric-box">
+          <span class="label"><i data-lucide="clock" style="width:14px; vertical-align:middle;"></i> Total Hours</span>
+          <span class="val" id="today-work-hours">0h 00m</span>
+          <span class="sub">Productive Time</span>
+        </div>
+        <div class="metric-box">
+          <span class="label"><i data-lucide="calendar" style="width:14px; vertical-align:middle;"></i> Month Rate</span>
+          <span class="val" id="dash-month-rate">--%</span>
+          <span class="sub">Attendance Score</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Stats Grid -->
+    <div class="stat-grid-4">
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-blue"><i data-lucide="percent"></i></div>
+        <div class="info">
+          <span class="title">Month Attendance</span>
+          <span class="value" id="stat-month-rate">0%</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-green"><i data-lucide="check-circle-2"></i></div>
+        <div class="info">
+          <span class="title">Present Days</span>
+          <span class="value" id="stat-present-days">0</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-orange"><i data-lucide="clock-alert"></i></div>
+        <div class="info">
+          <span class="title">Late Marks</span>
+          <span class="value" id="stat-late-count">0</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-purple"><i data-lucide="calendar-off"></i></div>
+        <div class="info">
+          <span class="title">Leaves Taken</span>
+          <span class="value" id="stat-leaves-taken">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent 7 Days Activity Strip -->
+    <div class="history-table-wrap">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">Recent 7 Days Attendance</h3>
+        <button class="btn-p-secondary btn-p-sm" id="btn-view-all-history" type="button">
+          View Full History <i data-lucide="arrow-right" style="width: 14px;"></i>
+        </button>
+      </div>
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Date &amp; Day</th>
+            <th>IN Time</th>
+            <th>OUT Time</th>
+            <th>Working Hours</th>
+            <th>Status</th>
+            <th>Method</th>
+          </tr>
+        </thead>
+        <tbody id="dash-recent-tbody">
+          <tr><td colspan="6" style="text-align: center; color: var(--text-tertiary); padding: 24px;">Loading recent activity...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ================================================================= TAB 2: ATTENDANCE HISTORY -->
+  <section id="tab-attendance" class="tab-content {% if active_tab == 'attendance' %}active{% endif %}">
+    
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-inputs">
+        <label for="hist-month-picker" style="font-size: 13px; font-weight: 600;">Month:</label>
+        <input type="month" id="hist-month-picker" class="filter-input" />
+        <button class="btn-p-secondary btn-p-sm" id="btn-filter-this-month" type="button">This Month</button>
+        <button class="btn-p-secondary btn-p-sm" id="btn-filter-last-month" type="button">Last Month</button>
+      </div>
+      <button class="btn-p-primary btn-p-sm" id="btn-apply-history-correction" type="button">
+        <i data-lucide="clock-alert"></i> Request Correction
+      </button>
+    </div>
+
+    <!-- Desktop / Tablet Table -->
+    <div class="history-table-wrap">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Date &amp; Day</th>
+            <th>IN Time</th>
+            <th>OUT Time</th>
+            <th>Status</th>
+            <th>Late</th>
+            <th>Working Hours</th>
+            <th>Punch Method</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody">
+          <tr><td colspan="8" style="text-align: center; padding: 32px; color: var(--text-tertiary);">Loading attendance history...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mobile History Cards -->
+    <div class="mobile-history-cards" id="mobile-history-cards">
+      <!-- Injected via JavaScript -->
+    </div>
+
+  </section>
+
+  <!-- ================================================================= TAB 3: MONTHLY SUMMARY -->
+  <section id="tab-summary" class="tab-content {% if active_tab == 'summary' %}active{% endif %}">
+    
+    <div class="filter-bar">
+      <div class="filter-inputs">
+        <label for="summary-month-picker" style="font-size: 13px; font-weight: 600;">Select Month:</label>
+        <input type="month" id="summary-month-picker" class="filter-input" />
+        <button class="btn-p-secondary btn-p-sm" id="btn-summary-reload" type="button">Refresh</button>
+      </div>
+      <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);" id="summary-month-title">
+        Monthly Summary
+      </div>
+    </div>
+
+    <!-- Progress Card -->
+    <div class="summary-progress-card">
+      <div style="display: flex; justify-content: space-between; align-items: baseline;">
+        <div>
+          <div style="font-size: 13px; color: var(--text-secondary); font-weight: 600;">Monthly Attendance Performance</div>
+          <div style="font-size: 28px; font-weight: 800; color: var(--text-primary); margin-top: 4px;" id="sum-pct-large">0%</div>
+        </div>
+        <div style="font-size: 13px; color: var(--text-secondary);" id="sum-present-ratio">0 of 0 Working Days</div>
+      </div>
+      <div class="progress-bar-wrap">
+        <div id="prog-present" class="progress-segment" style="background: var(--success); width: 0%;"></div>
+        <div id="prog-late" class="progress-segment" style="background: var(--warning); width: 0%;"></div>
+        <div id="prog-leave" class="progress-segment" style="background: #af52de; width: 0%;"></div>
+        <div id="prog-absent" class="progress-segment" style="background: var(--danger); width: 0%;"></div>
+      </div>
+      <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary);">
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--success);margin-right:4px;"></span> Present</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--warning);margin-right:4px;"></span> Late</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#af52de;margin-right:4px;"></span> Leave</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--danger);margin-right:4px;"></span> Absent</span>
+      </div>
+    </div>
+
+    <!-- Breakdown Grid -->
+    <div class="stat-grid-4">
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-blue"><i data-lucide="calendar"></i></div>
+        <div class="info">
+          <span class="title">Working Days</span>
+          <span class="value" id="sum-working-days">0</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-green"><i data-lucide="check-circle"></i></div>
+        <div class="info">
+          <span class="title">Present</span>
+          <span class="value" id="sum-present-days">0</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-orange"><i data-lucide="clock-alert"></i></div>
+        <div class="info">
+          <span class="title">Late Arrivals</span>
+          <span class="value" id="sum-late-days">0</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-purple"><i data-lucide="calendar-off"></i></div>
+        <div class="info">
+          <span class="title">Approved Leaves</span>
+          <span class="value" id="sum-leave-days">0</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap" style="background: rgba(255, 59, 48, 0.1); color: var(--danger);"><i data-lucide="x-circle"></i></div>
+        <div class="info">
+          <span class="title">Absent Days</span>
+          <span class="value" id="sum-absent-days">0</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap" style="background: rgba(255, 204, 0, 0.15); color: #997a00;"><i data-lucide="sun-medium"></i></div>
+        <div class="info">
+          <span class="title">Half Days</span>
+          <span class="value" id="sum-half-days">0</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-blue"><i data-lucide="timer"></i></div>
+        <div class="info">
+          <span class="title">Total Hours Worked</span>
+          <span class="value" id="sum-total-hours">0h</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-blue"><i data-lucide="award"></i></div>
+        <div class="info">
+          <span class="title">Avg Daily Hours</span>
+          <span class="value" id="sum-avg-hours">0h</span>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ================================================================= TAB 4: LEAVE MANAGEMENT -->
+  <section id="tab-leave" class="tab-content {% if active_tab == 'leave' %}active{% endif %}">
+    
+    <!-- Leave Balances -->
+    <div class="stat-grid-4">
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-blue"><i data-lucide="calendar-check"></i></div>
+        <div class="info">
+          <span class="title">Casual Leave (CL)</span>
+          <span class="value" id="bal-cl">--</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-green"><i data-lucide="heart-pulse"></i></div>
+        <div class="info">
+          <span class="title">Sick Leave (SL)</span>
+          <span class="value" id="bal-sl">--</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-purple"><i data-lucide="plane"></i></div>
+        <div class="info">
+          <span class="title">Earned Leave (EL)</span>
+          <span class="value" id="bal-el">--</span>
+        </div>
+      </div>
+      <div class="stat-card-p">
+        <div class="icon-wrap icon-orange"><i data-lucide="hourglass"></i></div>
+        <div class="info">
+          <span class="title">Pending Approval</span>
+          <span class="value" id="bal-pending">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Apply Leave Form -->
+    <div class="portal-form-card">
+      <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+        <i data-lucide="calendar-plus" style="color: var(--accent);"></i> Apply for Leave
+      </h3>
+      <form id="form-apply-leave">
+        <div class="portal-form-grid">
+          <div class="form-group">
+            <label for="leave-type">Leave Type *</label>
+            <select id="leave-type" required>
+              <option value="Casual Leave">Casual Leave (CL)</option>
+              <option value="Sick Leave">Sick Leave (SL)</option>
+              <option value="Earned Leave">Earned / Paid Leave (EL)</option>
+              <option value="Unpaid Leave">Unpaid Leave (LWP)</option>
+              <option value="Other">Other Leave</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="leave-start-date">Start Date *</label>
+            <input type="date" id="leave-start-date" required />
+          </div>
+          <div class="form-group">
+            <label for="leave-end-date">End Date *</label>
+            <input type="date" id="leave-end-date" required />
+          </div>
+          <div class="form-group">
+            <label for="leave-half-day">Day Type</label>
+            <select id="leave-half-day">
+              <option value="full">Full Day</option>
+              <option value="first_half">First Half Day</option>
+              <option value="second_half">Second Half Day</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top: 14px;">
+          <label for="leave-reason">Reason for Leave *</label>
+          <textarea id="leave-reason" rows="2" placeholder="Please specify the reason for your leave application..." required></textarea>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+          <button type="submit" class="btn-p-primary" id="btn-submit-leave">
+            <i data-lucide="send"></i> Submit Leave Application
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Leave History -->
+    <div class="history-table-wrap">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--glass-border);">
+        <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">My Leave Applications</h3>
+      </div>
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Dates</th>
+            <th>Type</th>
+            <th>Days</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Applied On</th>
+            <th>Remarks</th>
+          </tr>
+        </thead>
+        <tbody id="leaves-tbody">
+          <tr><td colspan="7" style="text-align: center; padding: 24px; color: var(--text-tertiary);">No leave applications found.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ================================================================= TAB 5: ATTENDANCE CORRECTIONS -->
+  <section id="tab-corrections" class="tab-content {% if active_tab == 'corrections' %}active{% endif %}">
+    
+    <!-- Info Alert -->
+    <div style="background: rgba(0, 122, 255, 0.08); border: 1px solid rgba(0, 122, 255, 0.2); border-radius: var(--radius-md); padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px; font-size: 13px; color: var(--text-primary);">
+      <i data-lucide="info" style="color: var(--accent); flex-shrink: 0; margin-top: 2px;"></i>
+      <div>
+        <strong>Need an Attendance Correction?</strong><br/>
+        If your biometric punch was missed, recorded with incorrect time, or not recognized, submit a correction request below with the actual timing and reason. An administrator will review and verify your request.
+      </div>
+    </div>
+
+    <!-- Correction Request Form -->
+    <div class="portal-form-card">
+      <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+        <i data-lucide="clock-alert" style="color: var(--accent);"></i> Submit Attendance Correction Request
+      </h3>
+      <form id="form-submit-correction">
+        <div class="portal-form-grid">
+          <div class="form-group">
+            <label for="corr-date">Attendance Date *</label>
+            <input type="date" id="corr-date" required />
+          </div>
+          <div class="form-group">
+            <label for="corr-issue-type">Issue Type *</label>
+            <select id="corr-issue-type" required>
+              <option value="Missing IN Punch">Missing IN Punch</option>
+              <option value="Missing OUT Punch">Missing OUT Punch</option>
+              <option value="Both IN and OUT Missing">Both IN and OUT Missing</option>
+              <option value="Incorrect Punch Time">Incorrect Punch Time</option>
+              <option value="Wrong Status Marked">Wrong Status Marked</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="corr-req-time">Actual / Correct Punch Time</label>
+            <input type="time" id="corr-req-time" />
+          </div>
+          <div class="form-group">
+            <label for="corr-reason">Reason Category *</label>
+            <select id="corr-reason" required>
+              <option value="Biometric Device Unreachable / Down">Biometric Device Unreachable / Down</option>
+              <option value="Face Camera Failed to Detect">Face Camera Failed to Detect</option>
+              <option value="On Official School Duty / Outdoor">On Official School Duty / Outdoor</option>
+              <option value="Forgot to Punch">Forgot to Punch</option>
+              <option value="Network / System Offline">Network / System Offline</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top: 14px;">
+          <label for="corr-note">Detailed Explanation / Note *</label>
+          <textarea id="corr-note" rows="2" placeholder="Explain the circumstances for this correction request..." required></textarea>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+          <button type="submit" class="btn-p-primary" id="btn-submit-corr">
+            <i data-lucide="send"></i> Submit Correction Request
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Correction Requests List -->
+    <div class="history-table-wrap">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--glass-border);">
+        <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">My Correction Requests Status</h3>
+      </div>
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Attendance Date</th>
+            <th>Issue Type</th>
+            <th>Requested Time</th>
+            <th>Reason &amp; Note</th>
+            <th>Status</th>
+            <th>Submitted On</th>
+            <th>Reviewer Comment</th>
+          </tr>
+        </thead>
+        <tbody id="corrections-tbody">
+          <tr><td colspan="7" style="text-align: center; padding: 24px; color: var(--text-tertiary);">No correction requests submitted.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ================================================================= TAB 6: PROFILE -->
+  <section id="tab-profile" class="tab-content {% if active_tab == 'profile' %}active{% endif %}">
+    
+    <div class="portal-form-card">
+      <div style="display: flex; align-items: center; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--glass-border);">
+        <div class="portal-hero-avatar" id="prof-avatar" style="width: 72px; height: 72px; font-size: 28px;">T</div>
+        <div>
+          <h2 style="font-size: 22px; font-weight: 700; margin: 0 0 4px 0; color: var(--text-primary);" id="prof-name">--</h2>
+          <div style="font-size: 14px; color: var(--text-secondary);" id="prof-designation">--</div>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 10px;">
+        <div class="metric-box" style="background: white; border: 1px solid var(--glass-border);">
+          <span class="label">Teacher / Employee ID</span>
+          <span class="val" id="prof-id" style="font-size: 16px;">--</span>
+        </div>
+        <div class="metric-box" style="background: white; border: 1px solid var(--glass-border);">
+          <span class="label">Email Address</span>
+          <span class="val" id="prof-email" style="font-size: 16px; word-break: break-all;">--</span>
+        </div>
+        <div class="metric-box" style="background: white; border: 1px solid var(--glass-border);">
+          <span class="label">Phone Number</span>
+          <span class="val" id="prof-phone" style="font-size: 16px;">--</span>
+        </div>
+        <div class="metric-box" style="background: white; border: 1px solid var(--glass-border);">
+          <span class="label">Department</span>
+          <span class="val" id="prof-dept" style="font-size: 16px;">--</span>
+        </div>
+        <div class="metric-box" style="background: white; border: 1px solid var(--glass-border);">
+          <span class="label">Designation</span>
+          <span class="val" id="prof-role" style="font-size: 16px;">--</span>
+        </div>
+        <div class="metric-box" style="background: white; border: 1px solid var(--glass-border);">
+          <span class="label">Joining Date</span>
+          <span class="val" id="prof-joining" style="font-size: 16px;">--</span>
+        </div>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <h4 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Classes &amp; Subjects Handled</h4>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="prof-classes-wrap">
+          <span class="method-pill" style="font-size: 12px; padding: 4px 10px;">All Standard Assigned Classes</span>
+        </div>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <h4 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Biometric &amp; Verification Status</h4>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <span class="status-pill badge-present" id="prof-face-status"><i data-lucide="scan-face"></i> Face Enrolled</span>
+          <span class="status-pill badge-present" id="prof-fp-status"><i data-lucide="fingerprint"></i> Fingerprint Registered</span>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+</div>
+
+<script src="{{ url_for('static', filename='teacher_portal.js') }}"></script>
+{% endblock %}

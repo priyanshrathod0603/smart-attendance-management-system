@@ -96,17 +96,23 @@ def _session_flags(row, rules) -> dict[str, bool]:
 
 
 # --------------------------------------------------------------------- holidays
-def is_holiday(d: date, scope: str = "all") -> bool:
+def is_holiday(d: date, scope: str = "all", school_id: Optional[str] = None) -> bool:
     """True if the date falls on a configured holiday or weekly off."""
-    if HolidayCalendar.query.filter(
+    q_hol = HolidayCalendar.query.filter(
         HolidayCalendar.holiday_date == d,
         or_(HolidayCalendar.applies_to == scope, HolidayCalendar.applies_to == "all"),
-    ).first():
+    )
+    if school_id:
+        q_hol = q_hol.filter(HolidayCalendar.school_id == school_id)
+    if q_hol.first():
         return True
     # Weekly off: Sunday by default for school
-    weekly = WeeklyOff.query.filter(
+    q_week = WeeklyOff.query.filter(
         or_(WeeklyOff.applies_to == scope, WeeklyOff.applies_to == "all")
-    ).all()
+    )
+    if school_id:
+        q_week = q_week.filter(WeeklyOff.school_id == school_id)
+    weekly = q_week.all()
     if not weekly:
         return d.weekday() == 6  # default Sunday off
     days = {w.weekday for w in weekly}
@@ -114,26 +120,34 @@ def is_holiday(d: date, scope: str = "all") -> bool:
 
 
 # --------------------------------------------------------------------- sessions
-def _student_attendance_query(d: date, class_name=None, section=None, department=None, designation=None):
+def _student_attendance_query(d: date, class_name=None, section=None, department=None, designation=None, school_id: Optional[str] = None):
     """Sessions for ``d`` plus the joins needed to filter by class/section."""
     q = StudentAttendance.query.filter(StudentAttendance.attendance_date == d)
+    if school_id:
+        q = q.filter(StudentAttendance.school_id == school_id)
     if class_name or section:
         q = q.join(Student, Student.id == StudentAttendance.student_id)
         if class_name:
             q = q.filter(Student.class_name == class_name)
         if section:
             q = q.filter(Student.section == section)
+        if school_id:
+            q = q.filter(Student.school_id == school_id)
     return q
 
 
-def _teacher_attendance_query(d: date, class_name=None, section=None, department=None, designation=None):
+def _teacher_attendance_query(d: date, class_name=None, section=None, department=None, designation=None, school_id: Optional[str] = None):
     q = TeacherAttendance.query.filter(TeacherAttendance.attendance_date == d)
+    if school_id:
+        q = q.filter(TeacherAttendance.school_id == school_id)
     if department or designation:
         q = q.join(Teacher, Teacher.id == TeacherAttendance.teacher_id)
         if department:
             q = q.filter(Teacher.department == department)
         if designation:
             q = q.filter(Teacher.designation == designation)
+        if school_id:
+            q = q.filter(Teacher.school_id == school_id)
     return q
 
 
@@ -144,6 +158,7 @@ def compute_dashboard_summary(
     section: Optional[str] = None,
     department: Optional[str] = None,
     designation: Optional[str] = None,
+    school_id: Optional[str] = None,
 ) -> dict:
     """The single source of truth for the enterprise dashboard cards.
 
@@ -151,23 +166,34 @@ def compute_dashboard_summary(
     render — so all three surfaces always agree.
     """
     target = d or _today_utc()
-    rules_stu = StudentTimeRule.query.first()
-    rules_tea = TeacherTimeRule.query.first()
+    q_srule = StudentTimeRule.query
+    q_trule = TeacherTimeRule.query
+    if school_id:
+        q_srule = q_srule.filter_by(school_id=school_id)
+        q_trule = q_trule.filter_by(school_id=school_id)
+    rules_stu = q_srule.first() or StudentTimeRule()
+    rules_tea = q_trule.first() or TeacherTimeRule()
     min_working = int(getattr(rules_stu, "min_working_minutes", 480) or 480)
 
     # Active population
     student_q = Student.query.filter_by(is_active=True)
+    teacher_q = Teacher.query.filter_by(is_active=True)
+    cam_q = Camera.query.filter_by(is_active=True)
+    if school_id:
+        student_q = student_q.filter_by(school_id=school_id)
+        teacher_q = teacher_q.filter_by(school_id=school_id)
+        cam_q = cam_q.filter_by(school_id=school_id)
     if class_name:
         student_q = student_q.filter_by(class_name=class_name)
     if section:
         student_q = student_q.filter_by(section=section)
     total_students = student_q.count()
-    total_teachers = Teacher.query.filter_by(is_active=True).count()
-    active_cams = Camera.query.filter_by(is_active=True).count()
+    total_teachers = teacher_q.count()
+    active_cams = cam_q.count()
 
     # Student sessions
-    student_sessions = _student_attendance_query(target, class_name, section).all()
-    teacher_sessions = _teacher_attendance_query(target, department=department, designation=designation).all()
+    student_sessions = _student_attendance_query(target, class_name, section, school_id=school_id).all()
+    teacher_sessions = _teacher_attendance_query(target, department=department, designation=designation, school_id=school_id).all()
     sessions = student_sessions + teacher_sessions
 
     flagged = [(s, _session_flags(s, rules_stu if s in student_sessions else rules_tea)) for s in sessions]
@@ -181,7 +207,10 @@ def compute_dashboard_summary(
     # Absence is defined by a missing IN record, not merely a missing row.
     absent = max(total_students - sum(1 for s in student_sessions if s.in_time is not None), 0)
 
-    unknown_today = UnknownFace.query.filter(func.date(UnknownFace.timestamp) == target).count()
+    q_unk = UnknownFace.query.filter(func.date(UnknownFace.timestamp) == target)
+    if school_id:
+        q_unk = q_unk.filter(UnknownFace.school_id == school_id)
+    unknown_today = q_unk.count()
 
     in_times = [s.in_time for s in sessions if s.in_time]
     out_times = [s.out_time for s in sessions if s.out_time]
@@ -200,17 +229,32 @@ def compute_dashboard_summary(
         round((present / total_students) * 100, 1) if total_students else 0.0
     )
 
-    avg_conf = db.session.query(func.avg(AttendanceEvent.confidence)).filter(
+    q_conf = db.session.query(func.avg(AttendanceEvent.confidence)).filter(
         func.date(AttendanceEvent.event_time) == target
-    ).scalar()
+    )
+    if school_id:
+        q_conf = q_conf.filter(AttendanceEvent.school_id == school_id)
+    avg_conf = q_conf.scalar()
     recognition_accuracy = round(float(avg_conf) * 100, 1) if avg_conf is not None else 98.5
 
     teachers_late = sum(1 for _, flags in [(s, _session_flags(s, rules_tea)) for s in teacher_sessions] if flags["late"])
     teachers_overtime = sum(1 for _, flags in [(s, _session_flags(s, rules_tea)) for s in teacher_sessions] if flags["overtime"])
 
+    q_in_ev = AttendanceEvent.query.filter(
+        func.date(AttendanceEvent.event_time) == target,
+        AttendanceEvent.event_type == "in",
+    )
+    q_out_ev = AttendanceEvent.query.filter(
+        func.date(AttendanceEvent.event_time) == target,
+        AttendanceEvent.event_type == "out",
+    )
+    if school_id:
+        q_in_ev = q_in_ev.filter(AttendanceEvent.school_id == school_id)
+        q_out_ev = q_out_ev.filter(AttendanceEvent.school_id == school_id)
+
     return {
         "date": target.isoformat(),
-        "is_holiday": is_holiday(target, "all"),
+        "is_holiday": is_holiday(target, "all", school_id=school_id),
         # core counts
         "total_students": total_students,
         "total_teachers": total_teachers,
@@ -240,14 +284,8 @@ def compute_dashboard_summary(
         "teachers_overtime": teachers_overtime,
         "recognition_accuracy": recognition_accuracy,
         "late_today": late,
-        "today_entries": AttendanceEvent.query.filter(
-            func.date(AttendanceEvent.event_time) == target,
-            AttendanceEvent.event_type == "in",
-        ).count(),
-        "today_exits": AttendanceEvent.query.filter(
-            func.date(AttendanceEvent.event_time) == target,
-            AttendanceEvent.event_type == "out",
-        ).count(),
+        "today_entries": q_in_ev.count(),
+        "today_exits": q_out_ev.count(),
         # filters echoed back so the UI can reflect them
         "class_name": class_name,
         "section": section,
@@ -272,6 +310,7 @@ def list_sessions(
     max_confidence: Optional[float] = None,
     recognition_type: Optional[str] = None,
     limit: int = 1000,
+    school_id: Optional[str] = None,
 ) -> list[dict]:
     """Return a list of sessions as dicts ready for the IN/OUT table.
 
@@ -283,7 +322,7 @@ def list_sessions(
     target = d or _today_utc()
     rows: list[dict] = []
     if kind in ("all", "student"):
-        q = _student_attendance_query(target, class_name, section, department, designation)
+        q = _student_attendance_query(target, class_name, section, department, designation, school_id=school_id)
         if status:
             q = q.filter(StudentAttendance.status == status)
         if search:
@@ -297,7 +336,7 @@ def list_sessions(
         for s in q.all():
             rows.append(_session_to_dict(s, "student"))
     if kind in ("all", "teacher"):
-        q = _teacher_attendance_query(target, department=department, designation=designation)
+        q = _teacher_attendance_query(target, department=department, designation=designation, school_id=school_id)
         if status:
             q = q.filter(TeacherAttendance.status == status)
         if search:
@@ -388,7 +427,8 @@ def _session_to_dict(row, kind: str) -> dict:
         "camera_id": row.camera_id,
         "camera": row.camera.name if row.camera else None,
         "confidence": row.confidence,
-        "recognition_type": "face",
+        "recognition_type": (getattr(person, "attendance_method", "FACE") or "FACE").lower() if person else "face",
+        "attendance_method": (getattr(person, "attendance_method", "FACE") or "FACE").upper() if person else "FACE",
     }
 
 
@@ -404,6 +444,7 @@ def build_report(
     designation: Optional[str] = None,
     search: Optional[str] = None,
     person_type: Optional[str] = None,
+    school_id: Optional[str] = None,
 ) -> tuple[list[dict], list[str], str]:
     """Return ``(rows, headers, title)`` for a given report type.
 
@@ -442,12 +483,17 @@ def build_report(
         TeacherAttendance.attendance_date >= start,
         TeacherAttendance.attendance_date <= end,
     )
+    if school_id:
+        student_q = student_q.filter(StudentAttendance.school_id == school_id)
+        teacher_q = teacher_q.filter(TeacherAttendance.school_id == school_id)
     if class_name or section or search:
         student_q = student_q.join(Student, Student.id == StudentAttendance.student_id)
         if class_name:
             student_q = student_q.filter(Student.class_name == class_name)
         if section:
             student_q = student_q.filter(Student.section == section)
+        if school_id:
+            student_q = student_q.filter(Student.school_id == school_id)
         if search:
             like = f"%{search.lower()}%"
             student_q = student_q.filter(
@@ -462,6 +508,8 @@ def build_report(
             teacher_q = teacher_q.filter(Teacher.department == department)
         if designation:
             teacher_q = teacher_q.filter(Teacher.designation == designation)
+        if school_id:
+            teacher_q = teacher_q.filter(Teacher.school_id == school_id)
 
     student_rows = student_q.all() if person_type in (None, "", "all", "student") else []
     teacher_rows = teacher_q.all() if person_type in (None, "", "all", "teacher") else []
@@ -645,11 +693,13 @@ def _build_dept_report(rows: list[dict]) -> list[dict]:
 
 
 # --------------------------------------------------------------------- trend / heatmap
-def attendance_trend(days: int = 7, class_name=None, section=None) -> list[dict]:
+def attendance_trend(days: int = 7, class_name=None, section=None, school_id: Optional[str] = None) -> list[dict]:
     """Daily attendance percentage for the past ``days`` days."""
     out = []
     today = _today_utc()
     student_q = Student.query.filter_by(is_active=True)
+    if school_id:
+        student_q = student_q.filter_by(school_id=school_id)
     if class_name:
         student_q = student_q.filter_by(class_name=class_name)
     if section:
@@ -658,12 +708,16 @@ def attendance_trend(days: int = 7, class_name=None, section=None) -> list[dict]
     for i in range(days - 1, -1, -1):
         d = today - timedelta(days=i)
         q = StudentAttendance.query.filter(StudentAttendance.attendance_date == d)
+        if school_id:
+            q = q.filter(StudentAttendance.school_id == school_id)
         if class_name or section:
             q = q.join(Student, Student.id == StudentAttendance.student_id)
             if class_name:
                 q = q.filter(Student.class_name == class_name)
             if section:
                 q = q.filter(Student.section == section)
+            if school_id:
+                q = q.filter(Student.school_id == school_id)
         sessions = q.all()
         present = sum(1 for s in sessions if s.status in {"present", "late", "overtime", "early_exit", "half_day"})
         late = sum(1 for s in sessions if s.is_late or s.status == "late")
@@ -677,13 +731,16 @@ def attendance_trend(days: int = 7, class_name=None, section=None) -> list[dict]
     return out
 
 
-def hourly_entries(d: Optional[date] = None) -> list[dict]:
+def hourly_entries(d: Optional[date] = None, school_id: Optional[str] = None) -> list[dict]:
     """Number of IN events grouped by hour-of-day (0..23)."""
     target = d or _today_utc()
-    rows = AttendanceEvent.query.filter(
+    q = AttendanceEvent.query.filter(
         func.date(AttendanceEvent.event_time) == target,
         AttendanceEvent.event_type == "in",
-    ).all()
+    )
+    if school_id:
+        q = q.filter(AttendanceEvent.school_id == school_id)
+    rows = q.all()
     buckets = [0] * 24
     for r in rows:
         dt = _aware(r.event_time)
@@ -693,7 +750,7 @@ def hourly_entries(d: Optional[date] = None) -> list[dict]:
     return [{"hour": h, "count": buckets[h]} for h in range(24)]
 
 
-def top_late_students(limit: int = 10, days: int = 30) -> list[dict]:
+def top_late_students(limit: int = 10, days: int = 30, school_id: Optional[str] = None) -> list[dict]:
     today = _today_utc()
     start = today - timedelta(days=days)
     q = (
@@ -705,7 +762,11 @@ def top_late_students(limit: int = 10, days: int = 30) -> list[dict]:
             StudentAttendance.attendance_date >= start,
             (StudentAttendance.is_late == True) | (StudentAttendance.status == "late"),
         )
-        .group_by(StudentAttendance.student_id)
+    )
+    if school_id:
+        q = q.filter(StudentAttendance.school_id == school_id)
+    q = (
+        q.group_by(StudentAttendance.student_id)
         .order_by(func.count(StudentAttendance.id).desc())
         .limit(limit)
         .all()
@@ -726,7 +787,7 @@ def top_late_students(limit: int = 10, days: int = 30) -> list[dict]:
     return out
 
 
-def top_overtime_teachers(limit: int = 10, days: int = 30) -> list[dict]:
+def top_overtime_teachers(limit: int = 10, days: int = 30, school_id: Optional[str] = None) -> list[dict]:
     today = _today_utc()
     start = today - timedelta(days=days)
     q = (
@@ -735,7 +796,11 @@ def top_overtime_teachers(limit: int = 10, days: int = 30) -> list[dict]:
             func.coalesce(func.sum(TeacherAttendance.overtime_minutes), 0).label("ot"),
         )
         .filter(TeacherAttendance.attendance_date >= start)
-        .group_by(TeacherAttendance.teacher_id)
+    )
+    if school_id:
+        q = q.filter(TeacherAttendance.school_id == school_id)
+    q = (
+        q.group_by(TeacherAttendance.teacher_id)
         .order_by(func.sum(TeacherAttendance.overtime_minutes).desc())
         .limit(limit)
         .all()
@@ -755,7 +820,7 @@ def top_overtime_teachers(limit: int = 10, days: int = 30) -> list[dict]:
     return out
 
 
-def top_early_exits(limit: int = 10, days: int = 30) -> list[dict]:
+def top_early_exits(limit: int = 10, days: int = 30, school_id: Optional[str] = None) -> list[dict]:
     today = _today_utc()
     start = today - timedelta(days=days)
     q = (
@@ -764,7 +829,11 @@ def top_early_exits(limit: int = 10, days: int = 30) -> list[dict]:
             StudentAttendance.attendance_date >= start,
             (StudentAttendance.is_early_exit == True) | (StudentAttendance.status == "early_exit"),
         )
-        .order_by(StudentAttendance.attendance_date.desc())
+    )
+    if school_id:
+        q = q.filter(StudentAttendance.school_id == school_id)
+    q = (
+        q.order_by(StudentAttendance.attendance_date.desc())
         .limit(limit)
         .all()
     )
@@ -782,17 +851,19 @@ def top_early_exits(limit: int = 10, days: int = 30) -> list[dict]:
     return out
 
 
-def working_hours_distribution(days: int = 30) -> list[dict]:
+def working_hours_distribution(days: int = 30, school_id: Optional[str] = None) -> list[dict]:
     today = _today_utc()
     start = today - timedelta(days=days)
-    rows = (
+    q = (
         db.session.query(StudentAttendance.working_minutes, StudentAttendance.is_late, StudentAttendance.status)
         .filter(
             StudentAttendance.attendance_date >= start,
             StudentAttendance.out_time.isnot(None),
         )
-        .all()
     )
+    if school_id:
+        q = q.filter(StudentAttendance.school_id == school_id)
+    rows = q.all()
     buckets = {
         "< 4h": 0,
         "4-6h": 0,
@@ -815,19 +886,27 @@ def working_hours_distribution(days: int = 30) -> list[dict]:
     return [{"range": k, "count": v} for k, v in buckets.items()]
 
 
-def camera_health() -> list[dict]:
-    cams = Camera.query.all()
+def camera_health(school_id: Optional[str] = None) -> list[dict]:
+    cam_q = Camera.query
+    if school_id:
+        cam_q = cam_q.filter_by(school_id=school_id)
+    cams = cam_q.all()
     out = []
     today = _today_utc()
     for c in cams:
-        events = AttendanceEvent.query.filter(
+        q_ev = AttendanceEvent.query.filter(
             func.date(AttendanceEvent.event_time) == today,
             AttendanceEvent.camera_id == c.id,
-        ).count()
-        unknown = UnknownFace.query.filter(
+        )
+        q_unk = UnknownFace.query.filter(
             func.date(UnknownFace.timestamp) == today,
             UnknownFace.camera_id == c.id,
-        ).count()
+        )
+        if school_id:
+            q_ev = q_ev.filter(AttendanceEvent.school_id == school_id)
+            q_unk = q_unk.filter(UnknownFace.school_id == school_id)
+        events = q_ev.count()
+        unknown = q_unk.count()
         out.append({
             "id": c.id,
             "name": c.name,
@@ -840,30 +919,38 @@ def camera_health() -> list[dict]:
     return out
 
 
-def recognition_stats(d: Optional[date] = None) -> dict:
+def recognition_stats(d: Optional[date] = None, school_id: Optional[str] = None) -> dict:
     target = d or _today_utc()
-    total = AttendanceEvent.query.filter(func.date(AttendanceEvent.event_time) == target).count()
-    recognized = (
+    q_tot = AttendanceEvent.query.filter(func.date(AttendanceEvent.event_time) == target)
+    q_rec = (
         db.session.query(func.count(AttendanceEvent.id))
         .filter(
             func.date(AttendanceEvent.event_time) == target,
             AttendanceEvent.confidence.isnot(None),
         )
-        .scalar()
-    ) or 0
+    )
+    q_unk = UnknownFace.query.filter(func.date(UnknownFace.timestamp) == target)
+    if school_id:
+        q_tot = q_tot.filter(AttendanceEvent.school_id == school_id)
+        q_rec = q_rec.filter(AttendanceEvent.school_id == school_id)
+        q_unk = q_unk.filter(UnknownFace.school_id == school_id)
+    total = q_tot.count()
+    recognized = q_rec.scalar() or 0
     success = round((recognized / total) * 100, 1) if total else 0.0
     return {
         "total_recognitions": int(total),
         "successful": int(recognized),
         "success_rate": success,
-        "unknown_faces": UnknownFace.query.filter(func.date(UnknownFace.timestamp) == target).count(),
+        "unknown_faces": q_unk.count(),
     }
 
 
-def activity_feed(limit: int = 30) -> list[dict]:
+def activity_feed(limit: int = 30, school_id: Optional[str] = None) -> list[dict]:
+    q = AttendanceEvent.query
+    if school_id:
+        q = q.filter(AttendanceEvent.school_id == school_id)
     rows = (
-        AttendanceEvent.query
-        .order_by(AttendanceEvent.event_time.desc())
+        q.order_by(AttendanceEvent.event_time.desc())
         .limit(limit)
         .all()
     )
@@ -890,17 +977,23 @@ def activity_feed(limit: int = 30) -> list[dict]:
     return out
 
 
-def class_attendance_heatmap(days: int = 7) -> dict:
+def class_attendance_heatmap(days: int = 7, school_id: Optional[str] = None) -> dict:
     """Return a 2D matrix ``{class: {date: pct}}`` for the heatmap."""
     today = _today_utc()
-    classes = sorted({s.class_name for s in Student.query.filter(Student.class_name.isnot(None)).all()})
+    stu_q = Student.query.filter(Student.class_name.isnot(None))
+    if school_id:
+        stu_q = stu_q.filter_by(school_id=school_id)
+    classes = sorted({s.class_name for s in stu_q.all()})
     if not classes:
         return {"classes": [], "dates": [], "matrix": {}}
     out_matrix: dict[str, dict[str, float]] = {}
     dates = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
     for cls in classes:
         out_matrix[cls] = {}
-        total_for_class = Student.query.filter_by(is_active=True, class_name=cls).count() or 1
+        tot_q = Student.query.filter_by(is_active=True, class_name=cls)
+        if school_id:
+            tot_q = tot_q.filter_by(school_id=school_id)
+        total_for_class = tot_q.count() or 1
         for d_iso in dates:
             d = date.fromisoformat(d_iso)
             q = (
@@ -912,6 +1005,8 @@ def class_attendance_heatmap(days: int = 7) -> dict:
                     StudentAttendance.status.in_(["present", "late", "overtime", "early_exit", "half_day"]),
                 )
             )
+            if school_id:
+                q = q.filter(StudentAttendance.school_id == school_id)
             present = q.count()
             out_matrix[cls][d_iso] = round((present / total_for_class) * 100, 1)
     return {

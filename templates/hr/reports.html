@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}HR & Payroll Reports - Krishna ERP{% endblock %}
+{% block title %}HR & Payroll Reports - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="briefcase"></i><span>HR Management</span> <i data-lucide="chevron-right"></i> <span>Reports</span>
 {% endblock %}

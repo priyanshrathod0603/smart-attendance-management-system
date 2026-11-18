@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Teachers - Krishna English School ERP{% endblock %}
+{% block title %}Teachers - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="presentation"></i><span>Teachers</span>
 {% endblock %}
@@ -70,14 +70,12 @@
           <th>Name</th>
           <th>Dept &amp; Designation</th>
           <th>Subject &amp; Classes</th>
-          <th>Contact</th>
-          <th>Face Status</th>
           <th>Status</th>
-          <th>Actions</th>
+          <th>Profile</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td colspan="8" class="empty">Loading teachers...</td></tr>
+        <tr><td colspan="6" class="empty">Loading teachers...</td></tr>
       </tbody>
     </table>
   </div>
@@ -96,6 +94,8 @@
     </div>
     <footer class="modal-foot">
       <button class="btn-secondary" data-close="1" type="button">Close</button>
+      <a id="tp-btn-360" class="btn-secondary" href="#" style="text-decoration:none;"><i data-lucide="sparkles"></i> HR 360° Profile</a>
+      <button id="tp-btn-fingerprint" class="btn-secondary" type="button"><i data-lucide="fingerprint"></i> Enroll Fingerprint</button>
       <button id="tp-btn-register" class="btn-primary" type="button"><i data-lucide="camera"></i> Register Face</button>
     </footer>
   </div>

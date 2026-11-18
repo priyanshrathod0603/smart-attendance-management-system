@@ -58,10 +58,7 @@
       </div>
       
       <div class="auth-options">
-        <a href="{{ url_for('auth.verify_code', email=email) }}" class="auth-option-link">
-          <span class="auth-option-icon">🔗</span>
-          <span>Use verification link instead</span>
-        </a>
+        <span class="muted small">Check your inbox or spam folder for your 6-digit PIN.</span>
       </div>
       
       <p class="auth-signup"><a href="{{ url_for('auth.login') }}">Back to sign in</a></p>

@@ -16,7 +16,7 @@ Design notes
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON
+from sqlalchemy import Index, JSON, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -34,7 +34,8 @@ class Student(db.Model):
     __tablename__ = "students"
 
     id = db.Column(db.Integer, primary_key=True)
-    roll_no = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    roll_no = db.Column(db.String(50), nullable=False, index=True)
     name = db.Column(db.String(120), nullable=False)
     class_name = db.Column(db.String(80), index=True)
     section = db.Column(db.String(40), index=True)
@@ -55,6 +56,7 @@ class Student(db.Model):
         db.DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    school = db.relationship("School")
     attendance_records = db.relationship(
         "Attendance", backref="student", cascade="all, delete-orphan"
     )
@@ -62,6 +64,7 @@ class Student(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "roll_no": self.roll_no,
             "name": self.name,
             "class_name": self.class_name,
@@ -81,6 +84,7 @@ class Camera(db.Model):
     __tablename__ = "cameras"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
     name = db.Column(db.String(120), nullable=False)
     source = db.Column(db.String(255), nullable=False)
     location = db.Column(db.String(120))
@@ -89,9 +93,12 @@ class Camera(db.Model):
         db.DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    school = db.relationship("School")
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "name": self.name,
             "source": self.source,
             "location": self.location,
@@ -112,6 +119,7 @@ class Attendance(db.Model):
     __tablename__ = "attendance"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
     student_id = db.Column(
         db.Integer, db.ForeignKey("students.id"), nullable=False, index=True
     )
@@ -132,10 +140,12 @@ class Attendance(db.Model):
     edit_reason = db.Column(db.String(255))
 
     camera = db.relationship("Camera")
+    school = db.relationship("School")
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "student_id": self.student_id,
             "student_name": self.student.name if self.student else None,
             "roll_no": self.student.roll_no if self.student else None,
@@ -157,9 +167,20 @@ class Teacher(db.Model):
     """A teacher record. CRUD-only, no attendance logic yet."""
 
     __tablename__ = "teachers"
+    __table_args__ = (
+        Index(
+            "uq_teachers_school_fingerprint_user_id_v2",
+            text("COALESCE(school_id, 0)"),
+            "fingerprint_user_id",
+            unique=True,
+            sqlite_where=text("fingerprint_user_id IS NOT NULL"),
+            postgresql_where=text("fingerprint_user_id IS NOT NULL"),
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    teacher_id = db.Column(db.String(50), nullable=False, index=True)
     name = db.Column(db.String(120), nullable=False)
     subject = db.Column(db.String(120))
     department = db.Column(db.String(120), index=True)
@@ -175,14 +196,44 @@ class Teacher(db.Model):
     # Student.extra_encodings column so the Teacher module behaves
     # identically to the Student module.
     extra_encodings = db.Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    # Multi-modal attendance configuration: FACE or FINGERPRINT
+    attendance_method = db.Column(db.String(20), default="FACE", nullable=False)
+    fingerprint_user_id = db.Column(db.String(50), nullable=True, index=True)
+    fingerprint_enrolled = db.Column(db.Boolean, default=False, nullable=False)
+    fingerprint_enrolled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(
         db.DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    school = db.relationship("School")
+
+    @property
+    def linked_employee(self):
+        try:
+            from hr.models import Employee
+            from sqlalchemy import or_
+            emp = Employee.query.filter_by(teacher_id=self.id).first()
+            if not emp and self.teacher_id:
+                raw_tid = str(self.teacher_id).strip()
+                emp = Employee.query.filter(
+                    or_(
+                        Employee.employee_code == raw_tid,
+                        Employee.employee_code == f"EMP-{raw_tid}"
+                    )
+                ).first()
+                if emp and not emp.teacher_id:
+                    emp.teacher_id = self.id
+            return emp
+        except Exception:
+            return None
+
     def to_dict(self) -> dict:
+        emp = self.linked_employee
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "teacher_id": self.teacher_id,
             "name": self.name,
             "subject": self.subject,
@@ -194,7 +245,12 @@ class Teacher(db.Model):
             "photo_path": self.photo_path,
             "has_encoding": self.encoding is not None,
             "extra_encodings": self.extra_encodings or [],
+            "attendance_method": (self.attendance_method or "FACE").upper(),
+            "fingerprint_user_id": self.fingerprint_user_id,
+            "fingerprint_enrolled": bool(self.fingerprint_enrolled),
+            "fingerprint_enrolled_at": self.fingerprint_enrolled_at.isoformat() if self.fingerprint_enrolled_at else None,
             "is_active": self.is_active,
+            "linked_employee_id": emp.id if emp else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -214,6 +270,7 @@ class UnknownFace(db.Model):
     __tablename__ = "unknown_faces"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
     camera_id = db.Column(db.Integer, db.ForeignKey("cameras.id"))
     timestamp = db.Column(
         db.DateTime(timezone=True),
@@ -230,10 +287,12 @@ class UnknownFace(db.Model):
     alerted = db.Column(db.Boolean, default=False, nullable=False)
 
     camera = db.relationship("Camera")
+    school = db.relationship("School")
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "camera_id": self.camera_id,
             "camera_name": self.camera.name if self.camera else None,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,

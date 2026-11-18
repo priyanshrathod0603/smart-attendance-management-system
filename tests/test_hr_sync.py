@@ -52,7 +52,7 @@ def test_teacher_sync_creates_employees_and_is_idempotent(app_instance):
     emp2 = Employee.query.filter_by(teacher_id=t2.id).first()
     assert emp1 is not None
     assert emp2 is not None
-    assert emp1.employee_code == "EMP-T001"
+    assert emp1.employee_code == "T001"
     assert emp1.first_name == "Rahul"
     assert emp1.last_name == "Sharma"
     assert emp1.phone == "9876543210"

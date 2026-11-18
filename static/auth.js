@@ -53,8 +53,8 @@
           return true;
         }
 
-        if (val.length < 6 || val.length > 12) {
-          errorEl.textContent = "Password must be between 6 and 12 characters.";
+        if (val.length < 6) {
+          errorEl.textContent = "Password must be at least 6 characters.";
           errorEl.style.display = "flex";
           if (container) container.classList.add("has-error");
           passwordInput.setAttribute("aria-invalid", "true");
@@ -75,7 +75,7 @@
         const val = passwordInput.value;
         if (!val) return; // Allow browser required validation to trigger
 
-        if (val.length < 6 || val.length > 12) {
+        if (val.length < 6) {
           e.preventDefault();
           validatePassword();
           passwordInput.focus();

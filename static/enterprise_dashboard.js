@@ -238,5 +238,10 @@
   }
 
   loadAll();
-  setInterval(loadAll, 30000);
+  setInterval(() => {
+    if (!document.hidden) loadAll();
+  }, 30000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) loadAll();
+  });
 })();

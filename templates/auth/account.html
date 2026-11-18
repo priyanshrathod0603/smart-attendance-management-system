@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Account Profile · KRISHNA PAYROLL{% endblock %}
+{% block title %}Account Profile · {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="user"></i><span>Account</span>
   <i data-lucide="chevron-right" class="nav-chevron"></i>
@@ -166,7 +166,7 @@
   <div class="card-head" style="display: flex; align-items: center; justify-content: space-between;">
     <div>
       <h2>Active Browser Sessions</h2>
-      <p class="muted small" style="margin-top: 4px;">Devices currently authenticated to your Krishna Payroll account.</p>
+      <p class="muted small" style="margin-top: 4px;">Devices currently authenticated to your account.</p>
     </div>
     <span class="badge blue">{{ sessions|length }} Active</span>
   </div>

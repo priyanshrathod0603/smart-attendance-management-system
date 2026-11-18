@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{% block title %}KRISHNA PAYROLL{% endblock %}</title>
+  <title>{% block title %}{{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}</title>
   <meta name="csrf-token" content="{{ csrf_token() }}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,21 +14,44 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   {% block head %}{% endblock %}
 </head>
-<body>
-  <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle sidebar">
-    <i data-lucide="menu"></i>
-  </button>
-
+<body data-page="{{ active_page|default('') }}">
+  <div id="sidebar-backdrop" class="sidebar-backdrop" aria-hidden="true"></div>
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-mark"><i data-lucide="scan-face"></i></div>
       <div class="brand-text">
-        <div class="brand-title">KRISHNA PAYROLL</div>
-        <div class="brand-sub">Enterprise Payroll &amp; HR Management</div>
+        <div class="brand-title">{{ current_school.name if current_school else 'AttendanceOS' }}</div>
+        <div class="brand-sub">{{ ('ID: ' ~ current_school.school_id) if current_school else 'Enterprise Multi-Tenant OS' }}</div>
       </div>
     </div>
 
     <nav class="nav">
+      {% if current_user and current_user.role == 'teacher' %}
+      <a href="{{ url_for('page_teacher_portal') }}"
+         class="nav-item {% if active_page == 'teacher_portal' and (active_tab|default('dashboard')) == 'dashboard' %}active{% endif %}">
+        <i data-lucide="layout-dashboard"></i><span>My Dashboard</span>
+      </a>
+      <a href="{{ url_for('page_teacher_portal_sub', subpath='attendance') }}"
+         class="nav-item {% if active_page == 'teacher_portal' and active_tab == 'attendance' %}active{% endif %}">
+        <i data-lucide="calendar-check"></i><span>Attendance History</span>
+      </a>
+      <a href="{{ url_for('page_teacher_portal_sub', subpath='summary') }}"
+         class="nav-item {% if active_page == 'teacher_portal' and active_tab == 'summary' %}active{% endif %}">
+        <i data-lucide="file-spreadsheet"></i><span>Monthly Summary</span>
+      </a>
+      <a href="{{ url_for('page_teacher_portal_sub', subpath='leave') }}"
+         class="nav-item {% if active_page == 'teacher_portal' and active_tab == 'leave' %}active{% endif %}">
+        <i data-lucide="calendar-days"></i><span>Leave Requests</span>
+      </a>
+      <a href="{{ url_for('page_teacher_portal_sub', subpath='corrections') }}"
+         class="nav-item {% if active_page == 'teacher_portal' and active_tab == 'corrections' %}active{% endif %}">
+        <i data-lucide="clock-alert"></i><span>Corrections</span>
+      </a>
+      <a href="{{ url_for('page_teacher_portal_sub', subpath='profile') }}"
+         class="nav-item {% if active_page == 'teacher_portal' and active_tab == 'profile' %}active{% endif %}">
+        <i data-lucide="user-check"></i><span>My Profile</span>
+      </a>
+      {% else %}
       <a href="{{ url_for('page_dashboard') }}"
          class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
         <i data-lucide="layout-dashboard"></i><span>Dashboard</span>
@@ -37,6 +60,8 @@
          class="nav-item {% if active_page == 'attendance' %}active{% endif %}">
         <i data-lucide="calendar-check"></i><span>Attendance</span>
       </a>
+      {% endif %}
+      {% if current_user and current_user.role != 'teacher' %}
       <div class="nav-accordion {% if active_page == 'students' %}open{% endif %}">
         <button class="nav-item nav-accordion-trigger {% if active_page == 'students' %}active{% endif %}" type="button">
           <i data-lucide="users"></i><span>Students</span><i data-lucide="chevron-down" class="nav-chevron"></i>
@@ -81,10 +106,16 @@
          class="nav-item {% if active_page == 'teachers' %}active{% endif %}">
         <i data-lucide="presentation"></i><span>Teachers</span>
       </a>
+      {% endif %}
+
+      {% if current_user and current_user.role not in ['teacher', 'viewer'] %}
       <a href="{{ url_for('page_cameras') }}"
          class="nav-item {% if active_page == 'cameras' %}active{% endif %}">
         <i data-lucide="video"></i><span>Cameras</span>
       </a>
+      {% endif %}
+
+      {% if current_user and current_user.role != 'teacher' %}
       <a href="{{ url_for('page_reports') }}"
          class="nav-item {% if active_page == 'reports' %}active{% endif %}">
         <i data-lucide="line-chart"></i><span>Reports</span>
@@ -146,19 +177,36 @@
           </a>
         </div>
       </div>
+      {% endif %}
 
+      {% if current_user and current_user.role in ['super_admin', 'institution_admin', 'admin', 'principal', 'hr_manager', 'attendance_manager'] %}
+      <a href="{{ url_for('page_fingerprint_device') }}"
+         class="nav-item {% if active_page == 'fingerprint_device' %}active{% endif %}">
+        <i data-lucide="fingerprint"></i><span>Fingerprint Device</span>
+      </a>
+      {% endif %}
+
+      {% if current_user and current_user.role in ['super_admin', 'institution_admin', 'admin', 'principal', 'hr_manager'] %}
+      <a href="{{ url_for('page_users') }}"
+         class="nav-item {% if active_page == 'users' %}active{% endif %}">
+        <i data-lucide="shield-check"></i><span>Staff &amp; Users</span>
+      </a>
+      {% endif %}
+
+      {% if current_user and current_user.role in ['super_admin', 'institution_admin', 'admin', 'principal', 'hr_admin'] %}
       <a href="{{ url_for('page_settings') }}"
          class="nav-item {% if active_page == 'settings' %}active{% endif %}">
         <i data-lucide="settings"></i><span>Settings</span>
       </a>
+      {% endif %}
     </nav>
 
     <div class="sidebar-foot">
       <div class="foot-user">
-        <div class="avatar">A</div>
+        <div class="avatar">{{ (current_user.name[:1]|upper) if current_user and current_user.name else 'A' }}</div>
         <div class="who">
-          <div class="who-name">Admin</div>
-          <div class="who-role">System Admin</div>
+          <div class="who-name">{{ current_user.name if current_user and current_user.name else 'Admin' }}</div>
+          <div class="who-role">{{ (current_user.role|replace('_', ' ')|title) if current_user and current_user.role else 'System Admin' }}</div>
         </div>
       </div>
     </div>
@@ -166,8 +214,13 @@
 
   <div class="main">
     <header class="topbar">
-      <div class="crumbs">
-        {% block crumbs %}{% endblock %}
+      <div class="topbar-nav-left" style="display: flex; align-items: center; gap: 12px;">
+        <button id="sidebar-toggle" class="sidebar-toggle-btn" aria-label="Toggle sidebar" type="button">
+          <i data-lucide="menu"></i>
+        </button>
+        <div class="crumbs">
+          {% block crumbs %}{% endblock %}
+        </div>
       </div>
       <div class="topbar-tools">
         <div class="search">
@@ -185,10 +238,10 @@
         </a>
         <div class="profile-menu-wrap">
         <button class="profile-pill" type="button" title="Profile" aria-expanded="false" aria-controls="profile-menu">
-          <span class="profile-avatar">A</span>
+          <span class="profile-avatar">{{ (current_user.name[:1]|upper) if current_user and current_user.name else 'A' }}</span>
           <span class="profile-copy">
-            <strong>{{ current_user.name if current_user else 'Admin User' }}</strong>
-            <small>{{ (current_user.role|replace('_', ' ')|title) if current_user else 'System Admin' }}</small>
+            <strong>{{ current_user.name if current_user and current_user.name else 'Admin User' }}</strong>
+            <small>{{ (current_user.role|replace('_', ' ')|title) if current_user and current_user.role else 'System Admin' }}</small>
           </span>
           <i data-lucide="chevron-down"></i>
         </button>

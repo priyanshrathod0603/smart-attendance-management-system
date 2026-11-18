@@ -97,9 +97,11 @@ def _create_audit_log(
     old_values: Optional[dict],
     new_values: Optional[dict],
     reason: Optional[str] = None,
+    school_id: Optional[str] = None,
 ) -> None:
     """Append an HR audit log row (does NOT commit — caller owns the session)."""
     audit_log = HRAuditLog(
+        school_id=school_id,
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,
@@ -148,6 +150,7 @@ def get_working_days_in_period(
     start_date: date,
     end_date: date,
     applies_to: str = "teacher",
+    school_id: Optional[str] = None,
 ) -> int:
     """Count calendar working days in [start_date, end_date] (excl. weekends & holidays).
 
@@ -155,26 +158,29 @@ def get_working_days_in_period(
     existing system — no new holiday logic is duplicated.
     """
     # Pull all weekly-off weekday numbers for this scope (and 'all')
-    weekly_off_rows = WeeklyOff.query.filter(
+    weekly_off_q = WeeklyOff.query.filter(
         or_(WeeklyOff.applies_to == applies_to, WeeklyOff.applies_to == "all")
-    ).all()
+    )
+    if school_id:
+        weekly_off_q = weekly_off_q.filter(WeeklyOff.school_id == school_id)
+    weekly_off_rows = weekly_off_q.all()
     weekly_off_days = {row.weekday for row in weekly_off_rows}
     # Default: Saturday (5) and Sunday (6) if no explicit config
     if not weekly_off_days:
         weekly_off_days = {5, 6}
 
     # Pull holidays in the range
-    holiday_dates = {
-        row.holiday_date
-        for row in HolidayCalendar.query.filter(
-            HolidayCalendar.holiday_date >= start_date,
-            HolidayCalendar.holiday_date <= end_date,
-            or_(
-                HolidayCalendar.applies_to == applies_to,
-                HolidayCalendar.applies_to == "all",
-            ),
-        ).all()
-    }
+    hol_q = HolidayCalendar.query.filter(
+        HolidayCalendar.holiday_date >= start_date,
+        HolidayCalendar.holiday_date <= end_date,
+        or_(
+            HolidayCalendar.applies_to == applies_to,
+            HolidayCalendar.applies_to == "all",
+        ),
+    )
+    if school_id:
+        hol_q = hol_q.filter(HolidayCalendar.school_id == school_id)
+    holiday_dates = {row.holiday_date for row in hol_q.all()}
 
     working_days = 0
     current = start_date
@@ -211,7 +217,9 @@ def get_attendance_summary_for_employee(
     ).all()
 
     summary = _empty_summary(start_date, end_date)
-    summary["working_days"] = get_working_days_in_period(start_date, end_date)
+    summary["working_days"] = get_working_days_in_period(
+        start_date, end_date, school_id=employee.school_id
+    )
 
     for rec in attendance_records:
         wm = rec.working_minutes or 0
@@ -234,22 +242,25 @@ def get_attendance_summary_for_employee(
             summary["present_days"] += 1
 
     # Holidays in range
-    weekly_off_rows = WeeklyOff.query.filter(
+    weekly_off_q = WeeklyOff.query.filter(
         or_(WeeklyOff.applies_to == "teacher", WeeklyOff.applies_to == "all")
-    ).all()
+    )
+    if employee.school_id:
+        weekly_off_q = weekly_off_q.filter(WeeklyOff.school_id == employee.school_id)
+    weekly_off_rows = weekly_off_q.all()
     weekly_off_weekdays = {row.weekday for row in weekly_off_rows} or {5, 6}
 
-    holiday_dates = {
-        row.holiday_date
-        for row in HolidayCalendar.query.filter(
-            HolidayCalendar.holiday_date >= start_date,
-            HolidayCalendar.holiday_date <= end_date,
-            or_(
-                HolidayCalendar.applies_to == "teacher",
-                HolidayCalendar.applies_to == "all",
-            ),
-        ).all()
-    }
+    hol_q = HolidayCalendar.query.filter(
+        HolidayCalendar.holiday_date >= start_date,
+        HolidayCalendar.holiday_date <= end_date,
+        or_(
+            HolidayCalendar.applies_to == "teacher",
+            HolidayCalendar.applies_to == "all",
+        ),
+    )
+    if employee.school_id:
+        hol_q = hol_q.filter(HolidayCalendar.school_id == employee.school_id)
+    holiday_dates = {row.holiday_date for row in hol_q.all()}
     summary["holidays"] = len(holiday_dates)
 
     # Weekly offs
@@ -566,14 +577,18 @@ def create_payroll_period(
     """Create a new payroll period; raises ValueError on overlap."""
     start = period_data["start_date"]
     end = period_data["end_date"]
+    school_id = period_data.get("school_id")
 
-    existing = PayrollPeriod.query.filter(
+    existing_q = PayrollPeriod.query.filter(
         or_(
             and_(PayrollPeriod.start_date <= start, PayrollPeriod.end_date >= start),
             and_(PayrollPeriod.start_date <= end, PayrollPeriod.end_date >= end),
             and_(PayrollPeriod.start_date >= start, PayrollPeriod.end_date <= end),
         )
-    ).first()
+    )
+    if school_id:
+        existing_q = existing_q.filter(PayrollPeriod.school_id == school_id)
+    existing = existing_q.first()
     if existing:
         raise ValueError(
             f"Payroll period overlaps with existing period '{existing.period_name}' "
@@ -584,7 +599,7 @@ def create_payroll_period(
     db.session.add(pp)
     try:
         db.session.commit()
-        _create_audit_log("payroll_period", pp.id, "create", performed_by, None, period_data)
+        _create_audit_log("payroll_period", pp.id, "create", performed_by, None, period_data, school_id=school_id)
         db.session.commit()
         return pp
     except Exception as exc:
@@ -620,7 +635,10 @@ def process_payroll_for_period(
     records: List[PayrollRecord] = []
 
     try:
-        employees = Employee.query.filter_by(is_active=True).all()
+        emp_q = Employee.query.filter_by(is_active=True)
+        if pp.school_id:
+            emp_q = emp_q.filter(Employee.school_id == pp.school_id)
+        employees = emp_q.all()
 
         for emp in employees:
             ss = get_employee_salary_structure(emp.id, pp.start_date)
@@ -635,28 +653,33 @@ def process_payroll_for_period(
             ot_amount = calculate_overtime_amount(emp.id, ss, att)
 
             # ── bonus ──
-            bonus_amount = Decimal(str(
-                db.session.query(func.sum(EmployeeBonus.amount)).filter(
-                    EmployeeBonus.employee_id == emp.id,
-                    EmployeeBonus.payroll_period_id == payroll_period_id,
-                    EmployeeBonus.status == "active",
-                ).scalar() or 0
-            ))
+            bonus_q = db.session.query(func.sum(EmployeeBonus.amount)).filter(
+                EmployeeBonus.employee_id == emp.id,
+                EmployeeBonus.payroll_period_id == payroll_period_id,
+                EmployeeBonus.status == "active",
+            )
+            if pp.school_id:
+                bonus_q = bonus_q.filter(EmployeeBonus.school_id == pp.school_id)
+            bonus_amount = Decimal(str(bonus_q.scalar() or 0))
 
             # ── reimbursements ──
-            reimb_amount = Decimal(str(
-                db.session.query(func.sum(Reimbursement.approved_amount)).filter(
-                    Reimbursement.employee_id == emp.id,
-                    Reimbursement.status == "approved",
-                    Reimbursement.paid_in_payroll == False,
-                ).scalar() or 0
-            ))
+            reimb_q = db.session.query(func.sum(Reimbursement.approved_amount)).filter(
+                Reimbursement.employee_id == emp.id,
+                Reimbursement.status == "approved",
+                Reimbursement.paid_in_payroll == False,
+            )
+            if pp.school_id:
+                reimb_q = reimb_q.filter(Reimbursement.school_id == pp.school_id)
+            reimb_amount = Decimal(str(reimb_q.scalar() or 0))
 
             # ── loan deduction ──
-            active_loans = EmployeeLoan.query.filter(
+            loan_q = EmployeeLoan.query.filter(
                 EmployeeLoan.employee_id == emp.id,
                 EmployeeLoan.status == "active",
-            ).all()
+            )
+            if pp.school_id:
+                loan_q = loan_q.filter(EmployeeLoan.school_id == pp.school_id)
+            active_loans = loan_q.all()
 
             loan_ded = Decimal("0.00")
             loan_repayment_rows: List[dict] = []
@@ -692,6 +715,7 @@ def process_payroll_for_period(
 
             # ── create PayrollRecord ──
             pr = PayrollRecord(
+                school_id=pp.school_id,
                 payroll_period_id=pp.id,
                 employee_id=emp.id,
                 basic_salary=_round2(ss.basic_salary),
@@ -714,6 +738,7 @@ def process_payroll_for_period(
 
             # ── attendance snapshot ──
             snapshot = PayrollAttendanceSummary(
+                school_id=pp.school_id,
                 payroll_record_id=pr.id,
                 employee_id=emp.id,
                 total_calendar_days=att["total_calendar_days"],
@@ -766,11 +791,14 @@ def process_payroll_for_period(
                     loan.status = "completed"
 
             # ── mark reimbursements as paid ──
-            Reimbursement.query.filter(
+            reimb_upd_q = Reimbursement.query.filter(
                 Reimbursement.employee_id == emp.id,
                 Reimbursement.status == "approved",
                 Reimbursement.paid_in_payroll == False,
-            ).update({"paid_in_payroll": True}, synchronize_session=False)
+            )
+            if pp.school_id:
+                reimb_upd_q = reimb_upd_q.filter(Reimbursement.school_id == pp.school_id)
+            reimb_upd_q.update({"paid_in_payroll": True}, synchronize_session=False)
 
             records.append(pr)
 
@@ -780,6 +808,7 @@ def process_payroll_for_period(
             "payroll_period", pp.id, "process", performed_by,
             {"status": old_status},
             {"status": "processed", "records_count": len(records)},
+            school_id=pp.school_id,
         )
         db.session.commit()
         return records
@@ -825,6 +854,7 @@ def finalize_payroll_period(
             "payroll_period", pp.id, "finalize", performed_by,
             {"status": old_status},
             {"status": "finalized", "finalized_at": pp.finalized_at.isoformat()},
+            school_id=pp.school_id,
         )
         db.session.commit()
         return pp
@@ -860,6 +890,7 @@ def create_payslip(
     payslip_number = f"PS-{pr.id:06d}-{ts}"
 
     slip = Payslip(
+        school_id=pr.school_id,
         payroll_record_id=payroll_record_id,
         payslip_number=payslip_number,
         status="generated",
@@ -870,6 +901,7 @@ def create_payslip(
         _create_audit_log(
             "payslip", slip.id, "create", performed_by, None,
             {"payroll_record_id": payroll_record_id, "payslip_number": payslip_number},
+            school_id=pr.school_id,
         )
         db.session.commit()
         return slip
@@ -879,79 +911,90 @@ def create_payslip(
 
 
 # ─────────────────────────────────────────────── dashboard
-def get_hr_dashboard_summary() -> Dict:
+def get_hr_dashboard_summary(school_id: Optional[str] = None) -> Dict:
     """Return HR dashboard statistics derived from live data."""
     from datetime import date as _date
     today = _date.today()
 
-    total_employees = Employee.query.count()
-    active_employees = Employee.query.filter_by(is_active=True).count()
+    emp_q = Employee.query
+    emp_active_q = Employee.query.filter_by(is_active=True)
+    if school_id:
+        emp_q = emp_q.filter_by(school_id=school_id)
+        emp_active_q = emp_active_q.filter_by(school_id=school_id)
 
-    present_today = TeacherAttendance.query.filter(
+    total_employees = emp_q.count()
+    active_employees = emp_active_q.count()
+
+    q_pres = TeacherAttendance.query.filter(
         TeacherAttendance.attendance_date == today,
         TeacherAttendance.status.in_(["present", "late", "half_day", "overtime", "early_exit"]),
-    ).count()
-
-    absent_today = TeacherAttendance.query.filter(
+    )
+    q_abs = TeacherAttendance.query.filter(
         TeacherAttendance.attendance_date == today,
         TeacherAttendance.status == "absent",
-    ).count()
-
-    late_today = TeacherAttendance.query.filter(
+    )
+    q_late = TeacherAttendance.query.filter(
         TeacherAttendance.attendance_date == today,
         TeacherAttendance.is_late == True,
-    ).count()
-
-    on_leave_today = LeaveRequest.query.filter(
+    )
+    q_leave = LeaveRequest.query.filter(
         LeaveRequest.status == "approved",
         LeaveRequest.start_date <= today,
         LeaveRequest.end_date >= today,
-    ).count()
-
-    half_day_today = TeacherAttendance.query.filter(
+    )
+    q_half = TeacherAttendance.query.filter(
         TeacherAttendance.attendance_date == today,
         TeacherAttendance.status == "half_day",
-    ).count()
-
-    overtime_today = TeacherAttendance.query.filter(
+    )
+    q_ot = TeacherAttendance.query.filter(
         TeacherAttendance.attendance_date == today,
         TeacherAttendance.overtime_minutes > 0,
-    ).count()
-
-    current_period = (
-        PayrollPeriod.query.filter(
-            PayrollPeriod.start_date <= today,
-            PayrollPeriod.end_date >= today,
-            PayrollPeriod.status.in_(["draft", "processing", "processed"]),
-        )
-        .order_by(desc(PayrollPeriod.start_date))
-        .first()
     )
-
-    last_period = (
-        PayrollPeriod.query.filter_by(status="finalized")
-        .order_by(desc(PayrollPeriod.end_date))
-        .first()
+    q_curr = PayrollPeriod.query.filter(
+        PayrollPeriod.start_date <= today,
+        PayrollPeriod.end_date >= today,
+        PayrollPeriod.status.in_(["draft", "processing", "processed"]),
     )
+    q_last = PayrollPeriod.query.filter_by(status="finalized")
+    q_pleave = LeaveRequest.query.filter_by(status="pending")
+    q_pot = OvertimeRecord.query.filter_by(status="pending")
+    q_preimb = Reimbursement.query.filter_by(status="pending")
+    q_loan = db.session.query(func.sum(EmployeeLoan.remaining_amount)).filter(EmployeeLoan.status == "active")
+
+    if school_id:
+        q_pres = q_pres.filter(TeacherAttendance.school_id == school_id)
+        q_abs = q_abs.filter(TeacherAttendance.school_id == school_id)
+        q_late = q_late.filter(TeacherAttendance.school_id == school_id)
+        q_leave = q_leave.filter(LeaveRequest.school_id == school_id)
+        q_half = q_half.filter(TeacherAttendance.school_id == school_id)
+        q_ot = q_ot.filter(TeacherAttendance.school_id == school_id)
+        q_curr = q_curr.filter(PayrollPeriod.school_id == school_id)
+        q_last = q_last.filter(PayrollPeriod.school_id == school_id)
+        q_pleave = q_pleave.filter(LeaveRequest.school_id == school_id)
+        q_pot = q_pot.filter(OvertimeRecord.school_id == school_id)
+        q_preimb = q_preimb.filter(Reimbursement.school_id == school_id)
+        q_loan = q_loan.filter(EmployeeLoan.school_id == school_id)
+
+    present_today = q_pres.count()
+    absent_today = q_abs.count()
+    late_today = q_late.count()
+    on_leave_today = q_leave.count()
+    half_day_today = q_half.count()
+    overtime_today = q_ot.count()
+    current_period = q_curr.order_by(desc(PayrollPeriod.start_date)).first()
+    last_period = q_last.order_by(desc(PayrollPeriod.end_date)).first()
+
     last_payroll_amount = 0.0
     if last_period:
-        last_payroll_amount = float(
-            db.session.query(func.sum(PayrollRecord.net_salary))
-            .filter(PayrollRecord.payroll_period_id == last_period.id)
-            .scalar()
-            or 0
-        )
+        q_pay = db.session.query(func.sum(PayrollRecord.net_salary)).filter(PayrollRecord.payroll_period_id == last_period.id)
+        if school_id:
+            q_pay = q_pay.filter(PayrollRecord.school_id == school_id)
+        last_payroll_amount = float(q_pay.scalar() or 0)
 
-    pending_leaves = LeaveRequest.query.filter_by(status="pending").count()
-    pending_overtime = OvertimeRecord.query.filter_by(status="pending").count()
-    pending_reimb = Reimbursement.query.filter_by(status="pending").count()
-
-    outstanding_loans = float(
-        db.session.query(func.sum(EmployeeLoan.remaining_amount))
-        .filter(EmployeeLoan.status == "active")
-        .scalar()
-        or 0
-    )
+    pending_leaves = q_pleave.count()
+    pending_overtime = q_pot.count()
+    pending_reimb = q_preimb.count()
+    outstanding_loans = float(q_loan.scalar() or 0)
 
     return {
         "total_employees": total_employees,

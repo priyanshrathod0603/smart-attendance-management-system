@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}HR Settings - Krishna ERP{% endblock %}
+{% block title %}HR & Organization Settings - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
-  <i data-lucide="briefcase"></i><span>HR Management</span> <i data-lucide="chevron-right"></i> <span>Settings</span>
+  <i data-lucide="briefcase"></i><span>HR Management</span> <i data-lucide="chevron-right"></i> <span>Organization Settings</span>
 {% endblock %}
 
 {% block content %}
@@ -9,6 +9,11 @@
 <div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; padding-bottom: 8px;">
   <button class="btn-secondary tab-btn active" data-tab="tab-set-dept"><i data-lucide="building"></i> Departments</button>
   <button class="btn-secondary tab-btn" data-tab="tab-set-desig"><i data-lucide="award"></i> Designations</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-teams"><i data-lucide="users-round"></i> Teams</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-job-levels"><i data-lucide="layers"></i> Job Levels</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-job-grades"><i data-lucide="trending-up"></i> Job Grades</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-cost-centers"><i data-lucide="landmark"></i> Cost Centers</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-set-employment-types"><i data-lucide="file-check"></i> Employment Types</button>
   <button class="btn-secondary tab-btn" data-tab="tab-set-comp"><i data-lucide="calculator"></i> Salary Components</button>
   <button class="btn-secondary tab-btn" data-tab="tab-set-leave"><i data-lucide="user-minus"></i> Leave Types</button>
   <button class="btn-secondary tab-btn" data-tab="tab-set-shifts"><i data-lucide="clock"></i> Shifts</button>
@@ -19,7 +24,10 @@
 <div id="tab-set-dept" class="tab-panel active">
   <div class="card glass">
     <div class="card-head">
-      <h2>Departments</h2>
+      <div>
+        <h2>Departments</h2>
+        <div class="muted small">Hierarchical organizational departments and campus mapping</div>
+      </div>
       <button class="btn-primary small" id="btn-add-dept"><i data-lucide="plus"></i> Add Department</button>
     </div>
     <div class="table-scroll">
@@ -28,12 +36,14 @@
           <tr>
             <th>Code</th>
             <th>Department Name</th>
-            <th>Description</th>
+            <th>Parent Department</th>
+            <th>Campus</th>
+            <th>Cost Center</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody id="set-dept-tbody">
-          <tr><td colspan="4" class="empty">Loading departments...</td></tr>
+          <tr><td colspan="6" class="empty">Loading departments...</td></tr>
         </tbody>
       </table>
     </div>
@@ -44,7 +54,10 @@
 <div id="tab-set-desig" class="tab-panel" style="display:none;">
   <div class="card glass">
     <div class="card-head">
-      <h2>Designations</h2>
+      <div>
+        <h2>Designations</h2>
+        <div class="muted small">Job titles linked to departments, job levels, and pay grades</div>
+      </div>
       <button class="btn-primary small" id="btn-add-desig"><i data-lucide="plus"></i> Add Designation</button>
     </div>
     <div class="table-scroll">
@@ -54,22 +67,171 @@
             <th>Code</th>
             <th>Designation Name</th>
             <th>Department</th>
+            <th>Job Level</th>
+            <th>Job Grade</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody id="set-desig-tbody">
-          <tr><td colspan="4" class="empty">Loading designations...</td></tr>
+          <tr><td colspan="6" class="empty">Loading designations...</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 </div>
 
-<!-- 3. SALARY COMPONENTS SETTINGS -->
+<!-- 3. TEAMS SETTINGS -->
+<div id="tab-set-teams" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Teams &amp; Working Groups</h2>
+        <div class="muted small">Sub-department units, faculty pods, and task squads</div>
+      </div>
+      <button class="btn-primary small" id="btn-add-team"><i data-lucide="plus"></i> Add Team</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Team Name</th>
+            <th>Department</th>
+            <th>Description</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-teams-tbody">
+          <tr><td colspan="5" class="empty">Loading teams...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 4. JOB LEVELS SETTINGS -->
+<div id="tab-set-job-levels" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Job Levels (Hierarchy)</h2>
+        <div class="muted small">Seniority and leadership hierarchy (e.g., L1 Junior, L2 Mid, L3 Senior, L4 Lead, L5 Director)</div>
+      </div>
+      <button class="btn-primary small" id="btn-add-job-level"><i data-lucide="plus"></i> Add Job Level</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Level Name</th>
+            <th>Hierarchy Rank</th>
+            <th>Description</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-job-levels-tbody">
+          <tr><td colspan="5" class="empty">Loading job levels...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 5. JOB GRADES SETTINGS -->
+<div id="tab-set-job-grades" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Job Grades (Pay Bands)</h2>
+        <div class="muted small">Compensation and salary bands (e.g., Grade A: 50k-80k, Grade B: 80k-120k)</div>
+      </div>
+      <button class="btn-primary small" id="btn-add-job-grade"><i data-lucide="plus"></i> Add Job Grade</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Grade Name</th>
+            <th>Min Salary</th>
+            <th>Max Salary</th>
+            <th>Description</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-job-grades-tbody">
+          <tr><td colspan="6" class="empty">Loading job grades...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 6. COST CENTERS SETTINGS -->
+<div id="tab-set-cost-centers" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Cost Centers</h2>
+        <div class="muted small">Financial budgeting units and cost accounting allocations</div>
+      </div>
+      <button class="btn-primary small" id="btn-add-cost-center"><i data-lucide="plus"></i> Add Cost Center</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Cost Center Name</th>
+            <th>Description</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-cost-centers-tbody">
+          <tr><td colspan="4" class="empty">Loading cost centers...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 7. EMPLOYMENT TYPES SETTINGS -->
+<div id="tab-set-employment-types" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Employment Types</h2>
+        <div class="muted small">Full-Time, Part-Time, Contract, Probation, Visiting Faculty, and Custom Types</div>
+      </div>
+      <button class="btn-primary small" id="btn-add-employment-type"><i data-lucide="plus"></i> Add Employment Type</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Type Name</th>
+            <th>Description</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="set-employment-types-tbody">
+          <tr><td colspan="4" class="empty">Loading employment types...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 8. SALARY COMPONENTS SETTINGS -->
 <div id="tab-set-comp" class="tab-panel" style="display:none;">
   <div class="card glass">
     <div class="card-head">
-      <h2>Global Salary Components</h2>
+      <div>
+        <h2>Global Salary Components</h2>
+        <div class="muted small">Standard allowances, deductions, and statutory heads</div>
+      </div>
       <button class="btn-primary small" id="btn-add-comp"><i data-lucide="plus"></i> Add Salary Component</button>
     </div>
     <div class="table-scroll">
@@ -95,11 +257,14 @@
   </div>
 </div>
 
-<!-- 4. LEAVE TYPES SETTINGS -->
+<!-- 9. LEAVE TYPES SETTINGS -->
 <div id="tab-set-leave" class="tab-panel" style="display:none;">
   <div class="card glass">
     <div class="card-head">
-      <h2>Leave Types &amp; Rules</h2>
+      <div>
+        <h2>Leave Types &amp; Policies</h2>
+        <div class="muted small">Leave accrual, quotas, carry forward, and approval controls</div>
+      </div>
       <button class="btn-primary small" id="btn-add-leavetype"><i data-lucide="plus"></i> Add Leave Type</button>
     </div>
     <div class="table-scroll">
@@ -123,11 +288,14 @@
   </div>
 </div>
 
-<!-- 5. SHIFTS SETTINGS -->
+<!-- 10. SHIFTS SETTINGS -->
 <div id="tab-set-shifts" class="tab-panel" style="display:none;">
   <div class="card glass">
     <div class="card-head">
-      <h2>Work Shifts &amp; Schedules</h2>
+      <div>
+        <h2>Work Shifts &amp; Schedules</h2>
+        <div class="muted small">Timing windows, grace periods, and half-day thresholds</div>
+      </div>
       <button class="btn-primary small" id="btn-add-shift"><i data-lucide="plus"></i> Add Shift</button>
     </div>
     <div class="table-scroll">
@@ -152,32 +320,37 @@
   </div>
 </div>
 
-<!-- 6. HR RULES SETTINGS SUMMARY -->
+<!-- 11. HR RULES SETTINGS SUMMARY -->
 <div id="tab-set-rules" class="tab-panel" style="display:none;">
   <div class="card glass">
-    <div class="card-head"><h2>Active HR &amp; Payroll Rules</h2></div>
+    <div class="card-head">
+      <h2>Active HR &amp; Payroll Rules</h2>
+      <div class="muted small">Core system logic, attendance deductions, and multi-tenant security</div>
+    </div>
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 12px;">
-      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-        <h3>Daily Salary Calculation</h3>
+      <div style="background: rgba(255,255,255,0.04); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+        <h3 style="margin-top:0;">Daily Salary Calculation</h3>
         <p class="muted small" style="margin-top:4px;">Monthly Salary &divide; Working Days in Payroll Period (Excludes weekly offs &amp; declared holidays)</p>
       </div>
-      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-        <h3>Half-Day Deduction Rule</h3>
+      <div style="background: rgba(255,255,255,0.04); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+        <h3 style="margin-top:0;">Half-Day Deduction Rule</h3>
         <p class="muted small" style="margin-top:4px;">Half Day = 0.5 &times; Daily Salary deduction per occurrence</p>
       </div>
-      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-        <h3>Overtime Multiplier</h3>
-        <p class="muted small" style="margin-top:4px;">Default = 1.0x (Configurable per employee salary structure to 1.5x or 2.0x)</p>
+      <div style="background: rgba(255,255,255,0.04); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+        <h3 style="margin-top:0;">Reporting Hierarchy Integrity</h3>
+        <p class="muted small" style="margin-top:4px;">Server-side cyclic reporting validator prevents circular manager-employee loops (A &rarr; B &rarr; A).</p>
       </div>
-      <div style="background: rgba(255,255,255,0.4); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
-        <h3>Payroll Finalization Immutability</h3>
-        <p class="muted small" style="margin-top:4px;">Finalized payroll writes an immutable <code>PayrollAttendanceSummary</code> snapshot row per employee</p>
+      <div style="background: rgba(255,255,255,0.04); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);">
+        <h3 style="margin-top:0;">Immutable Lifecycle Histories</h3>
+        <p class="muted small" style="margin-top:4px;">Department transfers, designation changes, promotions, and manager assignments write permanent audit history records.</p>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ============== Add Department Modal ============== -->
+<!-- ============== Modals ============== -->
+
+<!-- 1. Add Department Modal -->
 <div id="dept-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
   <div class="modal-panel" role="document">
@@ -197,9 +370,27 @@
             <input type="text" id="dept-name" class="input-text" placeholder="Computer Science" required />
           </div>
         </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Parent Department</label>
+            <select id="dept-parent-id" class="input-select">
+              <option value="">None (Top-Level)</option>
+            </select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Campus</label>
+            <input type="text" id="dept-campus" class="input-text" placeholder="Main Campus" />
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Cost Center</label>
+          <select id="dept-cost-center-id" class="input-select">
+            <option value="">None</option>
+          </select>
+        </div>
         <div style="margin-bottom:12px;">
           <label class="small" style="font-weight:600;">Description</label>
-          <input type="text" id="dept-desc" class="input-text" />
+          <input type="text" id="dept-desc" class="input-text" placeholder="Department description..." />
         </div>
         <div id="dept-modal-error" class="danger small" hidden></div>
       </div>
@@ -211,7 +402,7 @@
   </div>
 </div>
 
-<!-- ============== Add Designation Modal ============== -->
+<!-- 2. Add Designation Modal -->
 <div id="desig-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
   <div class="modal-panel" role="document">
@@ -235,6 +426,20 @@
             <input type="text" id="desig-name" class="input-text" placeholder="Head of Department" required />
           </div>
         </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Job Level</label>
+            <select id="desig-level-id" class="input-select">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Job Grade</label>
+            <select id="desig-grade-id" class="input-select">
+              <option value="">None</option>
+            </select>
+          </div>
+        </div>
         <div id="desig-modal-error" class="danger small" hidden></div>
       </div>
       <footer class="modal-foot">
@@ -245,7 +450,197 @@
   </div>
 </div>
 
-<!-- ============== Add Component Modal ============== -->
+<!-- 3. Add Team Modal -->
+<div id="team-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Team</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="team-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Team Code *</label>
+            <input type="text" id="team-code" class="input-text" placeholder="MATH-FAC" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Team Name *</label>
+            <input type="text" id="team-name" class="input-text" placeholder="Mathematics Faculty" required />
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Department (Optional)</label>
+          <select id="team-dept-select" class="input-select">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Description</label>
+          <input type="text" id="team-desc" class="input-text" placeholder="Team scope..." />
+        </div>
+        <div id="team-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Team</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 4. Add Job Level Modal -->
+<div id="job-level-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Job Level</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="job-level-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Level Code *</label>
+            <input type="text" id="jl-code" class="input-text" placeholder="L3" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Level Name *</label>
+            <input type="text" id="jl-name" class="input-text" placeholder="Senior / Lead" required />
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Hierarchy Rank (1 = Lowest)</label>
+          <input type="number" id="jl-rank" class="input-text" value="1" min="1" max="99" />
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Description</label>
+          <input type="text" id="jl-desc" class="input-text" placeholder="Experience level and scope..." />
+        </div>
+        <div id="jl-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Job Level</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 5. Add Job Grade Modal -->
+<div id="job-grade-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Job Grade</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="job-grade-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Grade Code *</label>
+            <input type="text" id="jg-code" class="input-text" placeholder="GRADE-A" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Grade Name *</label>
+            <input type="text" id="jg-name" class="input-text" placeholder="Executive Band A" required />
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Min Salary (Monthly)</label>
+            <input type="number" step="0.01" id="jg-min-sal" class="input-text" placeholder="40000.00" />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Max Salary (Monthly)</label>
+            <input type="number" step="0.01" id="jg-max-sal" class="input-text" placeholder="75000.00" />
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Description</label>
+          <input type="text" id="jg-desc" class="input-text" placeholder="Salary band notes..." />
+        </div>
+        <div id="jg-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Job Grade</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 6. Add Cost Center Modal -->
+<div id="cost-center-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Cost Center</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="cost-center-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Cost Center Code *</label>
+            <input type="text" id="cc-code" class="input-text" placeholder="CC-ACAD" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Cost Center Name *</label>
+            <input type="text" id="cc-name" class="input-text" placeholder="Academics Budget" required />
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Description</label>
+          <input type="text" id="cc-desc" class="input-text" placeholder="Accounting code or unit..." />
+        </div>
+        <div id="cc-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Cost Center</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 7. Add Employment Type Modal -->
+<div id="employment-type-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Employment Type</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="employment-type-form">
+      <div class="modal-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Code *</label>
+            <input type="text" id="et-code" class="input-text" placeholder="visiting" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Type Name *</label>
+            <input type="text" id="et-name" class="input-text" placeholder="Visiting Faculty" required />
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="small" style="font-weight:600;">Description</label>
+          <input type="text" id="et-desc" class="input-text" placeholder="Employment category notes..." />
+        </div>
+        <div id="et-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Employment Type</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 8. Add Component Modal -->
 <div id="comp-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
   <div class="modal-panel" role="document">
@@ -295,7 +690,7 @@
   </div>
 </div>
 
-<!-- ============== Add Leave Type Modal ============== -->
+<!-- 9. Add Leave Type Modal -->
 <div id="leavetype-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
   <div class="modal-panel" role="document">
@@ -338,7 +733,7 @@
   </div>
 </div>
 
-<!-- ============== Add Shift Modal ============== -->
+<!-- 10. Add Shift Modal -->
 <div id="shift-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
   <div class="modal-panel" role="document">
@@ -399,6 +794,9 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   let allDepts = [];
+  let allCostCenters = [];
+  let allJobLevels = [];
+  let allJobGrades = [];
 
   // Tab Switcher
   document.querySelectorAll(".tab-btn").forEach(btn => {
@@ -406,9 +804,132 @@ document.addEventListener("DOMContentLoaded", function() {
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       document.querySelectorAll(".tab-panel").forEach(p => p.style.display = "none");
       btn.classList.add("active");
-      document.getElementById(btn.dataset.tab).style.display = "block";
+      const targetPanel = document.getElementById(btn.dataset.tab);
+      if (targetPanel) targetPanel.style.display = "block";
     });
   });
+
+  // Load Cost Centers
+  async function loadCostCenters() {
+    try {
+      allCostCenters = await window.j("/api/hr/cost-centers");
+      const tbody = document.getElementById("set-cost-centers-tbody");
+      if (!allCostCenters || allCostCenters.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="empty">No Cost Centers configured.</td></tr>`;
+      } else {
+        tbody.innerHTML = allCostCenters.map(cc => `
+          <tr>
+            <td><strong>${window.escapeHtml(cc.code)}</strong></td>
+            <td>${window.escapeHtml(cc.name)}</td>
+            <td>${window.escapeHtml(cc.description || '--')}</td>
+            <td><span class="badge ${cc.status === 'active' ? 'green' : 'gray'}">${cc.status}</span></td>
+          </tr>
+        `).join('');
+      }
+
+      const ccSelect = document.getElementById("dept-cost-center-id");
+      if (ccSelect) {
+        ccSelect.innerHTML = '<option value="">None</option>' +
+          (allCostCenters || []).map(cc => `<option value="${cc.id}">${window.escapeHtml(cc.name)} (${window.escapeHtml(cc.code)})</option>`).join('');
+      }
+    } catch (e) { console.error("Error loading cost centers:", e); }
+  }
+
+  // Load Job Levels
+  async function loadJobLevels() {
+    try {
+      allJobLevels = await window.j("/api/hr/job-levels");
+      const tbody = document.getElementById("set-job-levels-tbody");
+      if (!allJobLevels || allJobLevels.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty">No Job Levels configured.</td></tr>`;
+      } else {
+        tbody.innerHTML = allJobLevels.map(jl => `
+          <tr>
+            <td><strong>${window.escapeHtml(jl.code)}</strong></td>
+            <td>${window.escapeHtml(jl.name)}</td>
+            <td><span class="badge blue">Rank ${jl.rank || 1}</span></td>
+            <td>${window.escapeHtml(jl.description || '--')}</td>
+            <td><span class="badge ${jl.status === 'active' ? 'green' : 'gray'}">${jl.status}</span></td>
+          </tr>
+        `).join('');
+      }
+
+      const jlSelect = document.getElementById("desig-level-id");
+      if (jlSelect) {
+        jlSelect.innerHTML = '<option value="">None</option>' +
+          (allJobLevels || []).map(jl => `<option value="${jl.id}">${window.escapeHtml(jl.name)} (Rank ${jl.rank || 1})</option>`).join('');
+      }
+    } catch (e) { console.error("Error loading job levels:", e); }
+  }
+
+  // Load Job Grades
+  async function loadJobGrades() {
+    try {
+      allJobGrades = await window.j("/api/hr/job-grades");
+      const tbody = document.getElementById("set-job-grades-tbody");
+      if (!allJobGrades || allJobGrades.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">No Job Grades configured.</td></tr>`;
+      } else {
+        tbody.innerHTML = allJobGrades.map(jg => `
+          <tr>
+            <td><strong>${window.escapeHtml(jg.code)}</strong></td>
+            <td>${window.escapeHtml(jg.name)}</td>
+            <td>₹${(jg.min_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+            <td>₹${(jg.max_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+            <td>${window.escapeHtml(jg.description || '--')}</td>
+            <td><span class="badge ${jg.status === 'active' ? 'green' : 'gray'}">${jg.status}</span></td>
+          </tr>
+        `).join('');
+      }
+
+      const jgSelect = document.getElementById("desig-grade-id");
+      if (jgSelect) {
+        jgSelect.innerHTML = '<option value="">None</option>' +
+          (allJobGrades || []).map(jg => `<option value="${jg.id}">${window.escapeHtml(jg.name)} (${window.escapeHtml(jg.code)})</option>`).join('');
+      }
+    } catch (e) { console.error("Error loading job grades:", e); }
+  }
+
+  // Load Employment Types
+  async function loadEmploymentTypes() {
+    try {
+      const types = await window.j("/api/hr/employment-types");
+      const tbody = document.getElementById("set-employment-types-tbody");
+      if (!types || types.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="empty">No Employment Types configured.</td></tr>`;
+      } else {
+        tbody.innerHTML = types.map(et => `
+          <tr>
+            <td><strong>${window.escapeHtml(et.code)}</strong></td>
+            <td>${window.escapeHtml(et.name)}</td>
+            <td>${window.escapeHtml(et.description || '--')}</td>
+            <td><span class="badge ${et.status === 'active' ? 'green' : 'gray'}">${et.status}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) { console.error("Error loading employment types:", e); }
+  }
+
+  // Load Teams
+  async function loadTeams() {
+    try {
+      const teams = await window.j("/api/hr/teams");
+      const tbody = document.getElementById("set-teams-tbody");
+      if (!teams || teams.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty">No Teams configured.</td></tr>`;
+      } else {
+        tbody.innerHTML = teams.map(t => `
+          <tr>
+            <td><strong>${window.escapeHtml(t.code)}</strong></td>
+            <td>${window.escapeHtml(t.name)}</td>
+            <td>${window.escapeHtml(t.department_name || '--')}</td>
+            <td>${window.escapeHtml(t.description || '--')}</td>
+            <td><span class="badge ${t.status === 'active' ? 'green' : 'gray'}">${t.status}</span></td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) { console.error("Error loading teams:", e); }
+  }
 
   // Load Departments
   async function loadDepartments() {
@@ -416,7 +937,7 @@ document.addEventListener("DOMContentLoaded", function() {
       allDepts = await window.j("/api/hr/departments");
       const tbody = document.getElementById("set-dept-tbody");
       if (!allDepts || allDepts.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4">
+        tbody.innerHTML = `<tr><td colspan="6">
           <div class="empty-state-card">
             <div class="empty-state-icon"><i data-lucide="building"></i></div>
             <div class="empty-state-title">No Departments Configured</div>
@@ -432,15 +953,32 @@ document.addEventListener("DOMContentLoaded", function() {
           <tr>
             <td><strong>${window.escapeHtml(d.code)}</strong></td>
             <td>${window.escapeHtml(d.name)}</td>
-            <td>${window.escapeHtml(d.description || '--')}</td>
+            <td>${window.escapeHtml(d.parent_dept_name || '--')}</td>
+            <td>${window.escapeHtml(d.campus || '--')}</td>
+            <td>${window.escapeHtml(d.cost_center_name || '--')}</td>
             <td><span class="badge ${d.status === 'active' ? 'green' : 'gray'}">${d.status}</span></td>
           </tr>
         `).join('');
       }
 
-      const sel = document.getElementById("desig-dept-select");
-      sel.innerHTML = '<option value="">Select Department</option>' +
-        allDepts.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+      // Populate Department dropdowns
+      const desigDeptSel = document.getElementById("desig-dept-select");
+      if (desigDeptSel) {
+        desigDeptSel.innerHTML = '<option value="">Select Department</option>' +
+          allDepts.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+      }
+
+      const teamDeptSel = document.getElementById("team-dept-select");
+      if (teamDeptSel) {
+        teamDeptSel.innerHTML = '<option value="">None</option>' +
+          allDepts.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+      }
+
+      const parentDeptSel = document.getElementById("dept-parent-id");
+      if (parentDeptSel) {
+        parentDeptSel.innerHTML = '<option value="">None (Top-Level)</option>' +
+          allDepts.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+      }
     } catch (e) { console.error("Error loading departments:", e); }
   }
 
@@ -450,7 +988,7 @@ document.addEventListener("DOMContentLoaded", function() {
       const desigs = await window.j("/api/hr/designations");
       const tbody = document.getElementById("set-desig-tbody");
       if (!desigs || desigs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4">
+        tbody.innerHTML = `<tr><td colspan="6">
           <div class="empty-state-card">
             <div class="empty-state-icon"><i data-lucide="award"></i></div>
             <div class="empty-state-title">No Designations Configured</div>
@@ -467,6 +1005,8 @@ document.addEventListener("DOMContentLoaded", function() {
             <td><strong>${window.escapeHtml(d.code)}</strong></td>
             <td>${window.escapeHtml(d.name)}</td>
             <td>${window.escapeHtml(d.department_name || '--')}</td>
+            <td>${window.escapeHtml(d.job_level_name || '--')}</td>
+            <td>${window.escapeHtml(d.job_grade_name || '--')}</td>
             <td><span class="badge ${d.status === 'active' ? 'green' : 'gray'}">${d.status}</span></td>
           </tr>
         `).join('');
@@ -579,35 +1119,48 @@ document.addEventListener("DOMContentLoaded", function() {
   // Modals Listeners
   document.getElementById("btn-add-dept").addEventListener("click", () => {
     document.getElementById("dept-form").reset();
+    document.getElementById("dept-modal-error").hidden = true;
     window.openModal("#dept-modal");
   });
 
   document.getElementById("dept-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
+      const parentId = document.getElementById("dept-parent-id").value;
+      const ccId = document.getElementById("dept-cost-center-id").value;
       await window.j("/api/hr/departments", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
           code: document.getElementById("dept-code").value.trim(),
           name: document.getElementById("dept-name").value.trim(),
+          parent_department_id: parentId ? parseInt(parentId) : null,
+          campus: document.getElementById("dept-campus").value.trim() || null,
+          cost_center_id: ccId ? parseInt(ccId) : null,
           description: document.getElementById("dept-desc").value.trim() || null,
           status: "active"
         })
       });
       window.closeModal("#dept-modal");
       loadDepartments();
-    } catch (err) { alert(err.message || "Failed to add department"); }
+    } catch (err) {
+      const errEl = document.getElementById("dept-modal-error");
+      errEl.textContent = err.message || "Failed to add department";
+      errEl.hidden = false;
+    }
   });
 
   document.getElementById("btn-add-desig").addEventListener("click", () => {
     document.getElementById("desig-form").reset();
+    document.getElementById("desig-modal-error").hidden = true;
     window.openModal("#desig-modal");
   });
 
   document.getElementById("desig-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
+      const levelId = document.getElementById("desig-level-id").value;
+      const gradeId = document.getElementById("desig-grade-id").value;
       await window.j("/api/hr/designations", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -615,16 +1168,176 @@ document.addEventListener("DOMContentLoaded", function() {
           department_id: parseInt(document.getElementById("desig-dept-select").value),
           code: document.getElementById("desig-code").value.trim(),
           name: document.getElementById("desig-name").value.trim(),
+          job_level_id: levelId ? parseInt(levelId) : null,
+          job_grade_id: gradeId ? parseInt(gradeId) : null,
           status: "active"
         })
       });
       window.closeModal("#desig-modal");
       loadDesignations();
-    } catch (err) { alert(err.message || "Failed to add designation"); }
+    } catch (err) {
+      const errEl = document.getElementById("desig-modal-error");
+      errEl.textContent = err.message || "Failed to add designation";
+      errEl.hidden = false;
+    }
   });
 
+  // Team modal
+  document.getElementById("btn-add-team").addEventListener("click", () => {
+    document.getElementById("team-form").reset();
+    document.getElementById("team-modal-error").hidden = true;
+    window.openModal("#team-modal");
+  });
+
+  document.getElementById("team-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const deptId = document.getElementById("team-dept-select").value;
+      await window.j("/api/hr/teams", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          code: document.getElementById("team-code").value.trim(),
+          name: document.getElementById("team-name").value.trim(),
+          department_id: deptId ? parseInt(deptId) : null,
+          description: document.getElementById("team-desc").value.trim() || null,
+          status: "active"
+        })
+      });
+      window.closeModal("#team-modal");
+      loadTeams();
+    } catch (err) {
+      const errEl = document.getElementById("team-modal-error");
+      errEl.textContent = err.message || "Failed to add team";
+      errEl.hidden = false;
+    }
+  });
+
+  // Job Level modal
+  document.getElementById("btn-add-job-level").addEventListener("click", () => {
+    document.getElementById("job-level-form").reset();
+    document.getElementById("jl-modal-error").hidden = true;
+    window.openModal("#job-level-modal");
+  });
+
+  document.getElementById("job-level-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j("/api/hr/job-levels", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          code: document.getElementById("jl-code").value.trim(),
+          name: document.getElementById("jl-name").value.trim(),
+          rank: parseInt(document.getElementById("jl-rank").value || 1),
+          description: document.getElementById("jl-desc").value.trim() || null,
+          status: "active"
+        })
+      });
+      window.closeModal("#job-level-modal");
+      loadJobLevels();
+    } catch (err) {
+      const errEl = document.getElementById("jl-modal-error");
+      errEl.textContent = err.message || "Failed to add job level";
+      errEl.hidden = false;
+    }
+  });
+
+  // Job Grade modal
+  document.getElementById("btn-add-job-grade").addEventListener("click", () => {
+    document.getElementById("job-grade-form").reset();
+    document.getElementById("jg-modal-error").hidden = true;
+    window.openModal("#job-grade-modal");
+  });
+
+  document.getElementById("job-grade-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const minSal = document.getElementById("jg-min-sal").value;
+      const maxSal = document.getElementById("jg-max-sal").value;
+      await window.j("/api/hr/job-grades", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          code: document.getElementById("jg-code").value.trim(),
+          name: document.getElementById("jg-name").value.trim(),
+          min_salary: minSal ? parseFloat(minSal) : null,
+          max_salary: maxSal ? parseFloat(maxSal) : null,
+          description: document.getElementById("jg-desc").value.trim() || null,
+          status: "active"
+        })
+      });
+      window.closeModal("#job-grade-modal");
+      loadJobGrades();
+    } catch (err) {
+      const errEl = document.getElementById("jg-modal-error");
+      errEl.textContent = err.message || "Failed to add job grade";
+      errEl.hidden = false;
+    }
+  });
+
+  // Cost Center modal
+  document.getElementById("btn-add-cost-center").addEventListener("click", () => {
+    document.getElementById("cost-center-form").reset();
+    document.getElementById("cc-modal-error").hidden = true;
+    window.openModal("#cost-center-modal");
+  });
+
+  document.getElementById("cost-center-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j("/api/hr/cost-centers", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          code: document.getElementById("cc-code").value.trim(),
+          name: document.getElementById("cc-name").value.trim(),
+          description: document.getElementById("cc-desc").value.trim() || null,
+          status: "active"
+        })
+      });
+      window.closeModal("#cost-center-modal");
+      loadCostCenters();
+    } catch (err) {
+      const errEl = document.getElementById("cc-modal-error");
+      errEl.textContent = err.message || "Failed to add cost center";
+      errEl.hidden = false;
+    }
+  });
+
+  // Employment Type modal
+  document.getElementById("btn-add-employment-type").addEventListener("click", () => {
+    document.getElementById("employment-type-form").reset();
+    document.getElementById("et-modal-error").hidden = true;
+    window.openModal("#employment-type-modal");
+  });
+
+  document.getElementById("employment-type-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j("/api/hr/employment-types", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          code: document.getElementById("et-code").value.trim(),
+          name: document.getElementById("et-name").value.trim(),
+          description: document.getElementById("et-desc").value.trim() || null,
+          status: "active"
+        })
+      });
+      window.closeModal("#employment-type-modal");
+      loadEmploymentTypes();
+    } catch (err) {
+      const errEl = document.getElementById("et-modal-error");
+      errEl.textContent = err.message || "Failed to add employment type";
+      errEl.hidden = false;
+    }
+  });
+
+  // Salary Component modal
   document.getElementById("btn-add-comp").addEventListener("click", () => {
     document.getElementById("comp-form").reset();
+    document.getElementById("comp-modal-error").hidden = true;
     window.openModal("#comp-modal");
   });
 
@@ -645,11 +1358,17 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       window.closeModal("#comp-modal");
       loadComponents();
-    } catch (err) { alert(err.message || "Failed to add component"); }
+    } catch (err) {
+      const errEl = document.getElementById("comp-modal-error");
+      errEl.textContent = err.message || "Failed to add component";
+      errEl.hidden = false;
+    }
   });
 
+  // Leave Type modal
   document.getElementById("btn-add-leavetype").addEventListener("click", () => {
     document.getElementById("leavetype-form").reset();
+    document.getElementById("leavetype-modal-error").hidden = true;
     window.openModal("#leavetype-modal");
   });
 
@@ -669,11 +1388,17 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       window.closeModal("#leavetype-modal");
       loadLeaveTypes();
-    } catch (err) { alert(err.message || "Failed to add leave type"); }
+    } catch (err) {
+      const errEl = document.getElementById("leavetype-modal-error");
+      errEl.textContent = err.message || "Failed to add leave type";
+      errEl.hidden = false;
+    }
   });
 
+  // Shift modal
   document.getElementById("btn-add-shift").addEventListener("click", () => {
     document.getElementById("shift-form").reset();
+    document.getElementById("shift-modal-error").hidden = true;
     window.openModal("#shift-modal");
   });
 
@@ -696,11 +1421,21 @@ document.addEventListener("DOMContentLoaded", function() {
       });
       window.closeModal("#shift-modal");
       loadShifts();
-    } catch (err) { alert(err.message || "Failed to add shift"); }
+    } catch (err) {
+      const errEl = document.getElementById("shift-modal-error");
+      errEl.textContent = err.message || "Failed to add shift";
+      errEl.hidden = false;
+    }
   });
 
+  // Initial Load
   loadDepartments();
   loadDesignations();
+  loadTeams();
+  loadJobLevels();
+  loadJobGrades();
+  loadCostCenters();
+  loadEmploymentTypes();
   loadComponents();
   loadLeaveTypes();
   loadShifts();

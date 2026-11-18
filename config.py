@@ -96,6 +96,11 @@ class Config:
     ATTENDANCE_COOLDOWN_SECONDS: int = int(
         os.getenv("ATTENDANCE_COOLDOWN_SECONDS", "300")
     )
+    BIOMAX_DEVICE_TIMEZONE: str = os.getenv("BIOMAX_DEVICE_TIMEZONE", "UTC")
+    BIOMAX_WEBHOOK_MAX_REQUESTS: int = int(os.getenv("BIOMAX_WEBHOOK_MAX_REQUESTS", "120"))
+    BIOMAX_WEBHOOK_RATE_WINDOW_SECONDS: int = int(
+        os.getenv("BIOMAX_WEBHOOK_RATE_WINDOW_SECONDS", "60")
+    )
 
     # --- Face matching (InsightFace uses cosine similarity, 0..1) ---
     FACE_MATCH_THRESHOLD: float = float(os.getenv("FACE_MATCH_THRESHOLD", "0.35"))

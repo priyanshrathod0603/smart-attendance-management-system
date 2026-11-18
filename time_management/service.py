@@ -65,19 +65,25 @@ def _local_time_of(dt: datetime) -> time:
 
 
 # --------------------------------------------------------------------- rules
-def get_active_rules(scope: str) -> AttendanceTimeRule:
+def get_active_rules(scope: str, school_id: Optional[str] = None) -> AttendanceTimeRule:
     """Return the rule row for ``scope`` (creates a default if missing)."""
     if scope not in {"teacher", "student"}:
         scope = "student"
-    rule = AttendanceTimeRule.query.filter_by(scope=scope).first()
+    q = AttendanceTimeRule.query.filter_by(scope=scope)
+    if school_id:
+        q = q.filter_by(school_id=school_id)
+    rule = q.first()
     if rule is None:
-        rule = AttendanceTimeRule(scope=scope)
+        rule = AttendanceTimeRule(scope=scope, school_id=school_id)
         db.session.add(rule)
         try:
             db.session.commit()
         except IntegrityError:
             db.session.rollback()
-            rule = AttendanceTimeRule.query.filter_by(scope=scope).first()
+            q2 = AttendanceTimeRule.query.filter_by(scope=scope)
+            if school_id:
+                q2 = q2.filter_by(school_id=school_id)
+            rule = q2.first()
     return rule
 
 
@@ -96,6 +102,7 @@ def audit(
     new_value,
     reason: str = "",
     edited_by: str = "admin",
+    school_id: Optional[str] = None,
 ) -> AttendanceAuditLog:
     """Write an audit-log row. Always commits."""
     log = AttendanceAuditLog(
@@ -106,6 +113,7 @@ def audit(
         new_value=None if new_value is None else str(new_value),
         reason=reason or None,
         edited_by=edited_by,
+        school_id=school_id,
     )
     db.session.add(log)
     db.session.commit()
@@ -136,13 +144,16 @@ def format_hms(seconds: int | None) -> str:
 
 
 # --------------------------------------------------------------------- holiday
-def is_holiday(d: date, scope: str = "all") -> bool:
+def is_holiday(d: date, scope: str = "all", school_id: Optional[str] = None) -> bool:
     """True if the date is in the holiday calendar (including weekly off)."""
     # 1. Explicit holiday row
-    holiday = AttendanceHoliday.query.filter(
+    q = AttendanceHoliday.query.filter(
         AttendanceHoliday.holiday_date == d,
         (AttendanceHoliday.scope == scope) | (AttendanceHoliday.scope == "all"),
-    ).first()
+    )
+    if school_id:
+        q = q.filter((AttendanceHoliday.school_id == school_id) | (AttendanceHoliday.school_id.is_(None)))
+    holiday = q.first()
     if holiday is not None:
         return True
     # 2. Weekly off (Sunday by default)

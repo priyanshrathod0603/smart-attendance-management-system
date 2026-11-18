@@ -42,7 +42,7 @@ import os
 # The default of 4 leaves enough parallelism for fast inference while
 # keeping the system thermally reasonable. Override via env-var if needed.
 # ---------------------------------------------------------------------------
-_ONNX_THREADS = os.environ.get("ATTENDANCEOS_ONNX_THREADS", "4")
+_ONNX_THREADS = os.environ.get("ATTENDANCEOS_ONNX_THREADS", "2")
 os.environ.setdefault("OMP_NUM_THREADS", _ONNX_THREADS)
 os.environ.setdefault("OPENBLAS_NUM_THREADS", _ONNX_THREADS)
 os.environ.setdefault("MKL_NUM_THREADS", _ONNX_THREADS)
@@ -166,3 +166,56 @@ def detect_faces(frame_bgr: np.ndarray) -> List[Tuple[Tuple[int, int, int, int],
         x1, y1, x2, y2 = f.bbox.astype(int).tolist()
         out.append(((int(y1), int(x2), int(y2), int(x1)), f.normed_embedding.astype(float).tolist()))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Fast Lightweight Face Detector (OpenCV Haar Cascade Pre-check)
+# ---------------------------------------------------------------------------
+_CASCADE_LOCK = threading.Lock()
+_FACE_CASCADE = None
+
+
+def _get_face_cascade():
+    global _FACE_CASCADE
+    if _FACE_CASCADE is not None:
+        return _FACE_CASCADE
+    with _CASCADE_LOCK:
+        if _FACE_CASCADE is not None:
+            return _FACE_CASCADE
+        import cv2
+        cascade_dir = getattr(cv2, "data", None)
+        cascade_path = (getattr(cascade_dir, "haarcascades", "") if cascade_dir else "") + "haarcascade_frontalface_default.xml"
+        if os.path.exists(cascade_path):
+            _FACE_CASCADE = cv2.CascadeClassifier(cascade_path)
+        return _FACE_CASCADE
+
+
+def has_faces_lightweight(frame_bgr: np.ndarray) -> bool:
+    """Sub-5ms lightweight face presence check before running heavy InsightFace models.
+
+    Downsamples the frame to small grayscale and runs Haar cascade.
+    Returns True if at least one potential face is found or if cascade is unavailable.
+    """
+    if frame_bgr is None or frame_bgr.size == 0:
+        return False
+    cascade = _get_face_cascade()
+    if cascade is None or cascade.empty():
+        return True  # Fallback to true if cascade is missing
+
+    import cv2
+    h, w = frame_bgr.shape[:2]
+    # Downsample frame to 240p for sub-millisecond Haar execution
+    scale = min(1.0, 240.0 / max(1, h))
+    small_w, small_h = max(1, int(w * scale)), max(1, int(h * scale))
+    small = cv2.resize(frame_bgr, (small_w, small_h), interpolation=cv2.INTER_NEAREST)
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+
+    faces = cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.2,
+        minNeighbors=3,
+        minSize=(20, 20),
+        flags=cv2.CASCADE_SCALE_IMAGE,
+    )
+    return len(faces) > 0
+

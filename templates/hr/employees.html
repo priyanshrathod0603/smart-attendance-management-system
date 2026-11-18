@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Employees - Krishna ERP{% endblock %}
+{% block title %}Employees - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="briefcase"></i><span>HR Management</span> <i data-lucide="chevron-right"></i> <span>Employees</span>
 {% endblock %}
@@ -7,11 +7,11 @@
 {% block content %}
 <section class="card glass filters">
   <div class="filter-row" style="flex-wrap: wrap; gap: 12px;">
-    <div class="filter-field grow">
+    <div class="filter-field grow" style="min-width: 240px;">
       <label>Search Employees</label>
       <div class="search">
         <i data-lucide="search"></i>
-        <input id="filter-search" type="search" placeholder="Search by name, code, email, or phone..." />
+        <input id="filter-search" type="search" placeholder="Search by name, code, email, phone, campus..." />
       </div>
     </div>
     <div class="filter-field">
@@ -27,12 +27,23 @@
       </select>
     </div>
     <div class="filter-field">
+      <label>Team</label>
+      <select id="filter-team">
+        <option value="">All Teams</option>
+      </select>
+    </div>
+    <div class="filter-field">
+      <label>Campus</label>
+      <input type="text" id="filter-campus" class="input-text" placeholder="e.g. Main Campus" style="height: 38px;" />
+    </div>
+    <div class="filter-field">
       <label>Status</label>
       <select id="filter-status">
         <option value="">All Statuses</option>
         <option value="active" selected>Active</option>
-        <option value="inactive">Inactive</option>
         <option value="probation">Probation</option>
+        <option value="inactive">Inactive</option>
+        <option value="resigned">Resigned</option>
         <option value="terminated">Terminated</option>
       </select>
     </div>
@@ -49,25 +60,28 @@
 
 <section class="card glass" style="margin-top: 20px;">
   <div class="card-head">
-    <h2>Employee Records</h2>
-    <span class="muted small" id="employee-count">--</span>
+    <div>
+      <h2>Employee Directory</h2>
+      <div class="muted small" id="employee-count">--</div>
+    </div>
   </div>
   <div class="table-scroll">
     <table id="employees-table">
       <thead>
         <tr>
           <th>Code</th>
-          <th>Name</th>
+          <th>Employee Name</th>
           <th>Department &amp; Designation</th>
-          <th>Type</th>
+          <th>Campus &amp; Team</th>
+          <th>Type / Grade</th>
           <th>Joining Date</th>
           <th>Contact</th>
           <th>Status</th>
-          <th>Actions</th>
+          <th style="text-align: right;">Actions</th>
         </tr>
       </thead>
       <tbody id="employees-tbody">
-        <tr><td colspan="8" class="empty">Loading employees...</td></tr>
+        <tr><td colspan="9" class="empty">Loading employees...</td></tr>
       </tbody>
     </table>
   </div>
@@ -76,7 +90,7 @@
 <!-- ============== Add/Edit Employee Modal ============== -->
 <div id="employee-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
-  <div class="modal-panel" role="document" style="max-width: 860px; width: 94%;">
+  <div class="modal-panel" role="document" style="max-width: 900px; width: 95%;">
     <header class="modal-head">
       <h3 id="emp-modal-title">Add Employee</h3>
       <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
@@ -86,7 +100,7 @@
       <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding-right: 8px;">
         
         <!-- Employee Source Selector (for New Employee mode) -->
-        <div id="emp-source-container" style="background: #FAF9F7; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 16px;">
+        <div id="emp-source-container" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 16px;">
           <label class="small" style="font-weight: 700; color: var(--accent); display: block; margin-bottom: 8px;">Employee Source</label>
           <div style="display: flex; align-items: center; gap: 20px;">
             <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.88rem; font-weight: 600;">
@@ -101,7 +115,7 @@
 
           <!-- Existing Teacher Selector Box -->
           <div id="teacher-select-box" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);">
-            <label class="small" style="font-weight: 600; color: #475569;">Select Existing Teacher to Import / Link</label>
+            <label class="small" style="font-weight: 600; color: #94a3b8;">Select Existing Teacher to Import / Link</label>
             <select id="teacher-picker" class="input-select" style="margin-top: 4px;">
               <option value="">-- Choose Teacher --</option>
             </select>
@@ -151,7 +165,7 @@
             <input type="tel" id="emp-alt-phone" class="input-text" placeholder="Optional" />
           </div>
         </div>
-        <div class="hr-form-grid" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
+        <div class="hr-form-grid" style="grid-template-columns: 2fr 1fr 1fr 1fr; margin-top: 10px;">
           <div>
             <label class="small" style="font-weight:600;">Street Address</label>
             <input type="text" id="emp-address" class="input-text" placeholder="Residential address..." />
@@ -170,20 +184,14 @@
           </div>
         </div>
 
-        <!-- 2. Employment Information -->
-        <div class="hr-section-header">
-          <i data-lucide="briefcase"></i><span>2. Employment Information</span>
+        <!-- 2. Organization & Hierarchy -->
+        <div class="hr-section-header" style="margin-top: 18px;">
+          <i data-lucide="sitemap"></i><span>2. Organization &amp; Hierarchy</span>
         </div>
         <div class="hr-form-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div>
             <label class="small" style="font-weight:600;">Employee Code <span class="danger">*</span></label>
             <input type="text" id="emp-code" class="input-text" placeholder="EMP-101" required />
-          </div>
-          <div>
-            <label class="small" style="font-weight:600;">Linked Teacher Profile</label>
-            <select id="emp-teacher-id">
-              <option value="">-- None (Non-Teacher Staff) --</option>
-            </select>
           </div>
           <div>
             <label class="small" style="font-weight:600;">Department <span class="danger">*</span></label>
@@ -198,21 +206,71 @@
             </select>
           </div>
           <div>
+            <label class="small" style="font-weight:600;">Team / Squad</label>
+            <select id="emp-team-id">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Job Level</label>
+            <select id="emp-job-level-id">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Job Grade (Pay Band)</label>
+            <select id="emp-job-grade-id">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Campus</label>
+            <input type="text" id="emp-campus" class="input-text" placeholder="Main Campus" />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Cost Center</label>
+            <select id="emp-cost-center-id">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Reporting Manager</label>
+            <select id="emp-manager-id">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Linked Teacher Profile</label>
+            <select id="emp-teacher-id">
+              <option value="">-- None (Non-Teacher Staff) --</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 3. Employment Terms -->
+        <div class="hr-section-header" style="margin-top: 18px;">
+          <i data-lucide="briefcase"></i><span>3. Employment Terms &amp; Lifecycle</span>
+        </div>
+        <div class="hr-form-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div>
             <label class="small" style="font-weight:600;">Employment Type <span class="danger">*</span></label>
             <select id="emp-type">
               <option value="full_time">Full Time</option>
               <option value="part_time">Part Time</option>
               <option value="contract">Contract</option>
               <option value="probation">Probation</option>
+              <option value="intern">Intern</option>
+              <option value="visiting">Visiting Faculty</option>
             </select>
           </div>
           <div>
             <label class="small" style="font-weight:600;">Employment Status <span class="danger">*</span></label>
             <select id="emp-status">
               <option value="active">Active</option>
+              <option value="probation">Probation</option>
               <option value="inactive">Inactive</option>
-              <option value="terminated">Terminated</option>
               <option value="resigned">Resigned</option>
+              <option value="terminated">Terminated</option>
             </select>
           </div>
           <div>
@@ -224,16 +282,18 @@
             <input type="date" id="emp-confirmation-date" class="input-text" />
           </div>
           <div>
-            <label class="small" style="font-weight:600;">Reporting Manager</label>
-            <select id="emp-manager-id">
-              <option value="">None</option>
-            </select>
+            <label class="small" style="font-weight:600;">Probation End Date</label>
+            <input type="date" id="emp-probation-end-date" class="input-text" />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Notice Period (Days)</label>
+            <input type="number" id="emp-notice-period" class="input-text" placeholder="30" />
           </div>
         </div>
 
-        <!-- 3. Emergency Contact -->
-        <div class="hr-section-header">
-          <i data-lucide="phone-call"></i><span>3. Emergency Contact</span>
+        <!-- 4. Emergency Contact -->
+        <div class="hr-section-header" style="margin-top: 18px;">
+          <i data-lucide="phone-call"></i><span>4. Emergency Contact</span>
         </div>
         <div class="hr-form-grid" style="grid-template-columns: 1fr 1fr;">
           <div>
@@ -246,14 +306,14 @@
           </div>
         </div>
 
-        <!-- 4. Salary Information (Employee-Specific) -->
+        <!-- 5. Salary Information -->
         <div id="emp-salary-section">
-          <div class="hr-section-header">
-            <i data-lucide="indian-rupee"></i><span>4. Salary Information</span>
+          <div class="hr-section-header" style="margin-top: 18px;">
+            <i data-lucide="indian-rupee"></i><span>5. Salary &amp; Compensation</span>
           </div>
           <div class="hr-form-grid" style="grid-template-columns: repeat(3, 1fr);">
             <div>
-              <label class="small" style="font-weight:600;">Basic Salary (Monthly) <span class="danger">*</span></label>
+              <label class="small" style="font-weight:600;">Basic Salary (Monthly)</label>
               <input type="number" step="0.01" id="emp-basic-salary" class="input-text" placeholder="e.g. 35000.00" />
             </div>
             <div>
@@ -271,7 +331,7 @@
           </div>
         </div>
 
-        <div id="emp-modal-error" class="danger small" style="margin-top: 12px; padding: 10px 14px; background: #FDEDED; border: 1px solid #F8C5C5; border-radius: var(--radius-sm);" hidden></div>
+        <div id="emp-modal-error" class="danger small" style="margin-top: 12px; padding: 10px 14px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm);" hidden></div>
       </div>
       <footer class="modal-foot">
         <button class="btn-secondary" data-close="1" type="button">Cancel</button>
@@ -287,6 +347,10 @@
 document.addEventListener("DOMContentLoaded", function() {
   let allDepartments = [];
   let allDesignations = [];
+  let allTeams = [];
+  let allJobLevels = [];
+  let allJobGrades = [];
+  let allCostCenters = [];
   let allTeachers = [];
   let currentEmployees = [];
 
@@ -297,9 +361,9 @@ document.addEventListener("DOMContentLoaded", function() {
       const deptSel = document.getElementById("filter-department");
       const modalDeptSel = document.getElementById("emp-department-id");
       deptSel.innerHTML = '<option value="">All Departments</option>' +
-        allDepartments.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+        (allDepartments || []).map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
       modalDeptSel.innerHTML = '<option value="">Select Department</option>' +
-        allDepartments.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+        (allDepartments || []).map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
     } catch (e) { console.error("Error loading departments:", e); }
 
     try {
@@ -307,17 +371,47 @@ document.addEventListener("DOMContentLoaded", function() {
       const desigSel = document.getElementById("filter-designation");
       const modalDesigSel = document.getElementById("emp-designation-id");
       desigSel.innerHTML = '<option value="">All Designations</option>' +
-        allDesignations.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+        (allDesignations || []).map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
       modalDesigSel.innerHTML = '<option value="">Select Designation</option>' +
-        allDesignations.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+        (allDesignations || []).map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
     } catch (e) { console.error("Error loading designations:", e); }
+
+    try {
+      allTeams = await window.j("/api/hr/teams");
+      const teamFilterSel = document.getElementById("filter-team");
+      const modalTeamSel = document.getElementById("emp-team-id");
+      teamFilterSel.innerHTML = '<option value="">All Teams</option>' +
+        (allTeams || []).map(t => `<option value="${t.id}">${window.escapeHtml(t.name)}</option>`).join('');
+      modalTeamSel.innerHTML = '<option value="">None</option>' +
+        (allTeams || []).map(t => `<option value="${t.id}">${window.escapeHtml(t.name)}</option>`).join('');
+    } catch (e) { console.error("Error loading teams:", e); }
+
+    try {
+      allJobLevels = await window.j("/api/hr/job-levels");
+      const modalLevelSel = document.getElementById("emp-job-level-id");
+      modalLevelSel.innerHTML = '<option value="">None</option>' +
+        (allJobLevels || []).map(l => `<option value="${l.id}">${window.escapeHtml(l.name)} (Rank ${l.rank || 1})</option>`).join('');
+    } catch (e) { console.error("Error loading job levels:", e); }
+
+    try {
+      allJobGrades = await window.j("/api/hr/job-grades");
+      const modalGradeSel = document.getElementById("emp-job-grade-id");
+      modalGradeSel.innerHTML = '<option value="">None</option>' +
+        (allJobGrades || []).map(g => `<option value="${g.id}">${window.escapeHtml(g.name)} (${window.escapeHtml(g.code)})</option>`).join('');
+    } catch (e) { console.error("Error loading job grades:", e); }
+
+    try {
+      allCostCenters = await window.j("/api/hr/cost-centers");
+      const modalCCSel = document.getElementById("emp-cost-center-id");
+      modalCCSel.innerHTML = '<option value="">None</option>' +
+        (allCostCenters || []).map(cc => `<option value="${cc.id}">${window.escapeHtml(cc.name)} (${window.escapeHtml(cc.code)})</option>`).join('');
+    } catch (e) { console.error("Error loading cost centers:", e); }
 
     try {
       allTeachers = await window.j("/api/teachers");
       const tSel = document.getElementById("emp-teacher-id");
       const tPicker = document.getElementById("teacher-picker");
       const teacherOpts = (allTeachers || []).map(t => `<option value="${t.id}">${window.escapeHtml(t.name)} (${window.escapeHtml(t.teacher_id || 'ID:' + t.id)})</option>`).join('');
-      
       tSel.innerHTML = '<option value="">-- None (Non-Teacher Staff) --</option>' + teacherOpts;
       tPicker.innerHTML = '<option value="">-- Choose Teacher --</option>' + teacherOpts;
     } catch (e) { console.error("Error loading teachers for mapping:", e); }
@@ -352,7 +446,6 @@ document.addEventListener("DOMContentLoaded", function() {
       return;
     }
 
-    // Check if this teacher is already linked to an employee
     const existingEmp = currentEmployees.find(e => e.teacher_id === tid);
     if (existingEmp) {
       linkWarning.innerHTML = `<i data-lucide="alert-circle" style="width:14px;vertical-align:middle;margin-right:4px;"></i> Already linked to Employee <strong>${window.escapeHtml(existingEmp.employee_code)}</strong> (${window.escapeHtml(existingEmp.full_name)}). Duplicate linking is prevented.`;
@@ -365,15 +458,13 @@ document.addEventListener("DOMContentLoaded", function() {
     linkWarning.style.display = "none";
     submitBtn.disabled = false;
 
-    // Find teacher record to prefill form
-    const teacher = allTeachers.find(t => t.id === tid);
+    const teacher = (allTeachers || []).find(t => t.id === tid);
     if (teacher) {
       document.getElementById("emp-teacher-id").value = teacher.id;
-      
       const rawCode = teacher.teacher_id || `T${teacher.id}`;
       document.getElementById("emp-code").value = rawCode.startsWith("EMP-") ? rawCode : `EMP-${rawCode}`;
       
-      const parts = (teacher.name || "").trim().split(new RegExp("\\s+"));
+      const parts = (teacher.name || "").trim().split(/\s+/);
       if (parts.length === 1) {
         document.getElementById("emp-first-name").value = parts[0] || "";
         document.getElementById("emp-middle-name").value = "";
@@ -392,13 +483,12 @@ document.addEventListener("DOMContentLoaded", function() {
       document.getElementById("emp-email").value = teacher.email || `teacher_${teacher.id}@school.edu`;
       document.getElementById("emp-joining-date").value = new Date().toISOString().slice(0, 10);
 
-      // Match department and designation if available
       if (teacher.department) {
-        const d = allDepartments.find(dp => dp.name.toLowerCase() === teacher.department.toLowerCase());
+        const d = (allDepartments || []).find(dp => dp.name.toLowerCase() === teacher.department.toLowerCase());
         if (d) document.getElementById("emp-department-id").value = d.id;
       }
       if (teacher.designation) {
-        const ds = allDesignations.find(dg => dg.name.toLowerCase() === teacher.designation.toLowerCase());
+        const ds = (allDesignations || []).find(dg => dg.name.toLowerCase() === teacher.designation.toLowerCase());
         if (ds) document.getElementById("emp-designation-id").value = ds.id;
       }
     }
@@ -409,18 +499,22 @@ document.addEventListener("DOMContentLoaded", function() {
     const search = document.getElementById("filter-search").value;
     const deptId = document.getElementById("filter-department").value;
     const desigId = document.getElementById("filter-designation").value;
+    const teamId = document.getElementById("filter-team").value;
+    const campus = document.getElementById("filter-campus").value;
     const status = document.getElementById("filter-status").value;
 
     let url = `/api/hr/employees?search=${encodeURIComponent(search)}&department_id=${deptId}&designation_id=${desigId}`;
+    if (teamId) url += `&team_id=${encodeURIComponent(teamId)}`;
+    if (campus) url += `&campus=${encodeURIComponent(campus)}`;
     if (status) url += `&employment_status=${encodeURIComponent(status)}`;
 
     const tbody = document.getElementById("employees-tbody");
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">Loading employees...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">Loading employees...</td></tr>';
 
     try {
       const res = await window.j(url);
       currentEmployees = res.employees || [];
-      document.getElementById("employee-count").textContent = `${res.total || 0} total`;
+      document.getElementById("employee-count").textContent = `${res.total || 0} total registered`;
 
       // Update manager dropdown
       const mgrSel = document.getElementById("emp-manager-id");
@@ -430,7 +524,7 @@ document.addEventListener("DOMContentLoaded", function() {
       if (currentEmployees.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="8">
+            <td colspan="9">
               <div class="empty-state-card">
                 <div class="empty-state-icon"><i data-lucide="users"></i></div>
                 <div class="empty-state-title">No employees found</div>
@@ -447,7 +541,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
       tbody.innerHTML = currentEmployees.map(emp => `
         <tr>
-          <td><strong><a href="/hr/employees/${emp.id}">${window.escapeHtml(emp.employee_code)}</a></strong></td>
+          <td><strong><a href="/hr/employees/${emp.id}" style="color: var(--accent);">${window.escapeHtml(emp.employee_code)}</a></strong></td>
           <td>
             <a href="/hr/employees/${emp.id}" style="font-weight:600;">${window.escapeHtml(emp.full_name)}</a>
             ${emp.teacher_id ? '<span class="badge blue small" style="margin-left:4px;">Teacher</span>' : ''}
@@ -456,21 +550,35 @@ document.addEventListener("DOMContentLoaded", function() {
             <div>${window.escapeHtml(emp.department_name || 'Unassigned')}</div>
             <div class="muted small">${window.escapeHtml(emp.designation_name || '')}</div>
           </td>
-          <td><span class="badge gray">${window.escapeHtml((emp.employment_type || '').replace('_', ' '))}</span></td>
-          <td>${window.escapeHtml(emp.joining_date || '--')}</td>
+          <td>
+            <div>${window.escapeHtml(emp.campus || 'Main')}</div>
+            <div class="muted small">${window.escapeHtml(emp.team_name || '--')}</div>
+          </td>
+          <td>
+            <div><span class="badge gray">${window.escapeHtml((emp.employment_type || '').replace('_', ' '))}</span></div>
+            <div class="muted small">${window.escapeHtml(emp.job_grade_name || emp.job_level_name || '')}</div>
+          </td>
+          <td>
+            <div>${window.escapeHtml(emp.joining_date || '--')}</div>
+            ${emp.probation_end_date ? `<div class="muted small">Prob: ${emp.probation_end_date}</div>` : ''}
+          </td>
           <td>
             <div>${window.escapeHtml(emp.email)}</div>
             <div class="muted small">${window.escapeHtml(emp.phone)}</div>
           </td>
           <td>
-            <span class="badge ${emp.employment_status === 'active' ? 'green' : 'red'}">
+            <span class="badge ${emp.employment_status === 'active' ? 'green' : (emp.employment_status === 'probation' ? 'yellow' : 'red')}">
               ${window.escapeHtml(emp.employment_status)}
             </span>
           </td>
-          <td>
-            <div style="display:flex; gap:6px;">
-              <a href="/hr/employees/${emp.id}" class="btn-secondary small" title="View Profile">Profile</a>
-              <button class="btn-secondary small btn-edit-emp" data-id="${emp.id}" type="button" title="Edit Employee">Edit</button>
+          <td style="text-align: right;">
+            <div style="display:inline-flex; gap:6px;">
+              <a href="/hr/employees/${emp.id}" class="btn-primary small" title="View 360 Profile">
+                <i data-lucide="eye"></i> 360° Profile
+              </a>
+              <button class="btn-secondary small btn-edit-emp" data-id="${emp.id}" type="button" title="Edit Details">
+                <i data-lucide="edit-2"></i>
+              </button>
             </div>
           </td>
         </tr>
@@ -503,10 +611,17 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById("emp-teacher-id").value = emp.teacher_id || "";
             document.getElementById("emp-department-id").value = emp.department_id || "";
             document.getElementById("emp-designation-id").value = emp.designation_id || "";
+            document.getElementById("emp-team-id").value = emp.team_id || "";
+            document.getElementById("emp-job-level-id").value = emp.job_level_id || "";
+            document.getElementById("emp-job-grade-id").value = emp.job_grade_id || "";
+            document.getElementById("emp-cost-center-id").value = emp.cost_center_id || "";
+            document.getElementById("emp-campus").value = emp.campus || "";
             document.getElementById("emp-type").value = emp.employment_type || "full_time";
             document.getElementById("emp-status").value = emp.employment_status || "active";
             document.getElementById("emp-joining-date").value = emp.joining_date || "";
             document.getElementById("emp-confirmation-date").value = emp.confirmation_date || "";
+            document.getElementById("emp-probation-end-date").value = emp.probation_end_date || "";
+            document.getElementById("emp-notice-period").value = emp.notice_period_days || "";
             document.getElementById("emp-manager-id").value = emp.reporting_manager_id || "";
             document.getElementById("emp-emg-name").value = emp.emergency_contact_name || "";
             document.getElementById("emp-emg-phone").value = emp.emergency_contact_phone || "";
@@ -534,7 +649,7 @@ document.addEventListener("DOMContentLoaded", function() {
       });
     } catch (err) {
       console.error("Error loading employees:", err);
-      tbody.innerHTML = `<tr><td colspan="8" class="empty danger">Failed to load employees: ${window.escapeHtml(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty danger">Failed to load employees: ${window.escapeHtml(err.message)}</td></tr>`;
     }
   }
 
@@ -600,10 +715,17 @@ document.addEventListener("DOMContentLoaded", function() {
       teacher_id: document.getElementById("emp-teacher-id").value ? parseInt(document.getElementById("emp-teacher-id").value) : null,
       department_id: parseInt(document.getElementById("emp-department-id").value),
       designation_id: parseInt(document.getElementById("emp-designation-id").value),
+      team_id: document.getElementById("emp-team-id").value ? parseInt(document.getElementById("emp-team-id").value) : null,
+      job_level_id: document.getElementById("emp-job-level-id").value ? parseInt(document.getElementById("emp-job-level-id").value) : null,
+      job_grade_id: document.getElementById("emp-job-grade-id").value ? parseInt(document.getElementById("emp-job-grade-id").value) : null,
+      cost_center_id: document.getElementById("emp-cost-center-id").value ? parseInt(document.getElementById("emp-cost-center-id").value) : null,
+      campus: document.getElementById("emp-campus").value.trim() || null,
       employment_type: document.getElementById("emp-type").value,
       employment_status: document.getElementById("emp-status").value,
       joining_date: document.getElementById("emp-joining-date").value,
       confirmation_date: document.getElementById("emp-confirmation-date").value || null,
+      probation_end_date: document.getElementById("emp-probation-end-date").value || null,
+      notice_period_days: document.getElementById("emp-notice-period").value ? parseInt(document.getElementById("emp-notice-period").value) : null,
       reporting_manager_id: document.getElementById("emp-manager-id").value ? parseInt(document.getElementById("emp-manager-id").value) : null,
       emergency_contact_name: document.getElementById("emp-emg-name").value.trim() || null,
       emergency_contact_phone: document.getElementById("emp-emg-phone").value.trim() || null,
@@ -661,9 +783,12 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 
   // Attach Filter Listeners
-  ["filter-search", "filter-department", "filter-designation", "filter-status"].forEach(id => {
-    document.getElementById(id).addEventListener("input", loadEmployees);
-    document.getElementById(id).addEventListener("change", loadEmployees);
+  ["filter-search", "filter-department", "filter-designation", "filter-team", "filter-campus", "filter-status"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("input", loadEmployees);
+      el.addEventListener("change", loadEmployees);
+    }
   });
 
   loadMetadata();

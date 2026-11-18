@@ -43,11 +43,13 @@
   function initSidebar() {
     const body = document.body;
     const KEY = "faceid-sidebar-collapsed";
-    if (localStorage.getItem(KEY) === "1") body.classList.add("sidebar-collapsed");
+    if (localStorage.getItem(KEY) === "1" && !window.matchMedia("(max-width: 1024px)").matches) {
+      body.classList.add("sidebar-collapsed");
+    }
     const btn = $("#sidebar-toggle");
     if (btn) {
       btn.addEventListener("click", () => {
-        if (window.matchMedia("(max-width: 768px)").matches) {
+        if (window.matchMedia("(max-width: 1024px)").matches) {
           body.classList.toggle("sidebar-open");
         } else {
           body.classList.toggle("sidebar-collapsed");
@@ -55,6 +57,29 @@
         }
       });
     }
+
+    const backdrop = $("#sidebar-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", () => {
+        body.classList.remove("sidebar-open");
+      });
+    }
+
+    // Auto-close sidebar on mobile/tablet when clicking links
+    $$(".sidebar .nav a").forEach((link) => {
+      link.addEventListener("click", () => {
+        if (window.matchMedia("(max-width: 1024px)").matches) {
+          body.classList.remove("sidebar-open");
+        }
+      });
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && body.classList.contains("sidebar-open")) {
+        body.classList.remove("sidebar-open");
+      }
+    });
+
     $$(".nav-accordion-trigger").forEach((trigger) => {
       trigger.addEventListener("click", () => {
         const group = trigger.closest(".nav-accordion");

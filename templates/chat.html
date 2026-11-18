@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}AI Chat Assistant - Krishna English School ERP{% endblock %}
+{% block title %}AI Assistant - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="message-square"></i><span>AI Assistant</span>
 {% endblock %}
 {% block content %}
 <section class="card glass chat-card">
-  <h2>Ask Krishna School SLM</h2>
+  <h2>Ask {{ current_school.name if current_school else 'AttendanceOS' }} AI</h2>
   <p class="muted">Try asking: "Who is present today?", "How many today?", "Find student Priyansh".</p>
   <div id="log" class="chat-log"></div>
   <form id="chat-form" style="display: flex; gap: 10px;">

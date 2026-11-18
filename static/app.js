@@ -30,132 +30,169 @@
       <span class="pill"><i data-lucide="link"></i> ${escapeHtml(c.source)}</span>`;
   }
 
+  let isCamStatusInFlight = false;
   async function refreshCameraStatus(root = document) {
+    if (document.hidden || isCamStatusInFlight) return;
+    isCamStatusInFlight = true;
     try {
       const statuses = await j("/api/cameras/status");
-      Object.values(statuses).forEach((s) => {
-        const set = (key, value) => {
-          $$(`[data-cam-${key}="${s.camera_id}"]`, root).forEach((el) => { el.textContent = value; });
-        };
-        set("fps", s.fps);
-        set("detected", s.detected_faces);
-        set("recognized", s.recognized_faces);
-        set("unknown", s.unknown_faces);
-      });
+      if (statuses && typeof statuses === "object") {
+        Object.values(statuses).forEach((s) => {
+          const set = (key, value) => {
+            $$(`[data-cam-${key}="${s.camera_id}"]`, root).forEach((el) => { el.textContent = value; });
+          };
+          set("fps", s.fps);
+          set("detected", s.detected_faces);
+          set("recognized", s.recognized_faces);
+          set("unknown", s.unknown_faces);
+        });
+      }
     } catch { /* status is best-effort */ }
+    finally {
+      isCamStatusInFlight = false;
+    }
   }
 
   // ------------------------------------------------------ active page
   function activePage() {
-    // Enterprise attendance has its own focused controller.
+    if (document.body && document.body.dataset && document.body.dataset.page) {
+      return document.body.dataset.page.trim();
+    }
+    // Safe fallbacks only when data-page is omitted
     if (document.querySelector("#enterprise-attendance-table")) return "attendance_enterprise";
-    const a = $(".nav-item.active");
-    if (!a) return "dashboard";
-    if (a.textContent.includes("Dashboard")) return "dashboard";
-    if (a.textContent.includes("Attendance")) return "attendance";
-    if (a.textContent.includes("Students")) return "students";
-    if (a.textContent.includes("Teachers")) return "teachers";
-    if (a.textContent.includes("Cameras")) return "cameras";
-    if (a.textContent.includes("Reports")) return "reports";
-    if (a.textContent.includes("Settings")) return "settings";
-    return "dashboard";
+    return "";
   }
 
   // ============================================================ DASHBOARD
+  let dashboardTimers = [];
+  function clearDashboardTimers() {
+    dashboardTimers.forEach((t) => clearInterval(t));
+    dashboardTimers = [];
+  }
+
   function initDashboard() {
+    clearDashboardTimers();
+
     const camGrid = $("#cam-grid");
     const attendanceTbody = $("#attendance-table tbody");
     const unknownList = $("#unknown-list");
     const scopePill = $("#scope-pill");
 
+    let isStatsInFlight = false;
+    let isAttendanceInFlight = false;
+    let isUnknownInFlight = false;
+
     async function refreshStats() {
+      if (isStatsInFlight || document.hidden) return;
+      isStatsInFlight = true;
       try {
         const s = await j("/api/stats");
-        $("#stat-total").textContent = s.total_students;
-        $("#stat-present").textContent = s.present_today;
-        $("#stat-absent").textContent = s.absent_today;
-        $("#stat-unknown").textContent = s.unknown_today;
-        $("#stat-cams").textContent = s.active_cameras;
-        set("#stat-teachers-present", s.teachers_present);
-        set("#stat-teachers-absent", s.teachers_absent);
-        set("#stat-late", s.late_today);
-        set("#stat-entries", s.today_entries);
-        set("#stat-exits", s.today_exits);
-        const label = s.class_name ? `${s.class_name}${s.section ? " " + s.section : ""}` : "All Classes";
-        if (scopePill) scopePill.textContent = label;
+        if (s) {
+          $("#stat-total").textContent = s.total_students ?? "--";
+          $("#stat-present").textContent = s.present_today ?? "--";
+          $("#stat-absent").textContent = s.absent_today ?? "--";
+          $("#stat-unknown").textContent = s.unknown_today ?? "--";
+          $("#stat-cams").textContent = s.active_cameras ?? "--";
+          set("#stat-teachers-present", s.teachers_present);
+          set("#stat-teachers-absent", s.teachers_absent);
+          set("#stat-late", s.late_today);
+          set("#stat-entries", s.today_entries);
+          set("#stat-exits", s.today_exits);
+          const label = s.class_name ? `${s.class_name}${s.section ? " " + s.section : ""}` : "All Classes";
+          if (scopePill) scopePill.textContent = label;
+        }
       } catch (e) { /* noop */ }
+      finally {
+        isStatsInFlight = false;
+      }
     }
 
     async function refreshCams() {
       if (!camGrid) return;
-      const cams = await j("/api/cameras");
-      if (!cams.length) { camGrid.innerHTML = `<div class="empty">No cameras configured yet.</div>`; return; }
-      camGrid.innerHTML = "";
-      cams.forEach((c) => {
-        const card = document.createElement("div");
-        card.className = "cam-card";
-        card.innerHTML = `
-          <div class="cam-head">
-            <div>
-              <div class="cam-name">${escapeHtml(c.name)}</div>
-              <div class="cam-loc">${escapeHtml(c.location || "")}</div>
+      try {
+        const cams = await j("/api/cameras");
+        if (!cams || !cams.length) { camGrid.innerHTML = `<div class="empty">No cameras configured yet.</div>`; return; }
+        camGrid.innerHTML = "";
+        cams.forEach((c) => {
+          const card = document.createElement("div");
+          card.className = "cam-card";
+          card.innerHTML = `
+            <div class="cam-head">
+              <div>
+                <div class="cam-name">${escapeHtml(c.name)}</div>
+                <div class="cam-loc">${escapeHtml(c.location || "")}</div>
+              </div>
+              <span class="badge ${c.is_active ? "ok" : "muted"}">${c.is_active ? "Active" : "Stopped"}</span>
             </div>
-            <span class="badge ${c.is_active ? "ok" : "muted"}">${c.is_active ? "Active" : "Stopped"}</span>
-          </div>
-          <img class="cam-stream" src="/stream/${c.id}" alt="${escapeHtml(c.name)}" />
-          <div class="cam-meta">
-            ${cameraMetaHtml(c)}
-          </div>
-          <div class="cam-foot">
-            <button class="btn-secondary" data-cam-action="start" data-id="${c.id}" ${c.is_active ? "disabled" : ""}>
-              <i data-lucide="play"></i> Start
-            </button>
-            <button class="btn-secondary" data-cam-action="stop" data-id="${c.id}" ${c.is_active ? "" : "disabled"}>
-              <i data-lucide="square"></i> Stop
-            </button>
-            <button class="btn-icon" data-cam-action="fullscreen" data-id="${c.id}" title="Fullscreen">
-              <i data-lucide="maximize"></i>
-            </button>
-          </div>`;
-        camGrid.appendChild(card);
-      });
-      if (window.lucide) lucide.createIcons();
-      refreshCameraStatus(camGrid);
+            <img class="cam-stream" src="/stream/${c.id}" alt="${escapeHtml(c.name)}" />
+            <div class="cam-meta">
+              ${cameraMetaHtml(c)}
+            </div>
+            <div class="cam-foot">
+              <button class="btn-secondary" data-cam-action="start" data-id="${c.id}" ${c.is_active ? "disabled" : ""}>
+                <i data-lucide="play"></i> Start
+              </button>
+              <button class="btn-secondary" data-cam-action="stop" data-id="${c.id}" ${c.is_active ? "" : "disabled"}>
+                <i data-lucide="square"></i> Stop
+              </button>
+              <button class="btn-icon" data-cam-action="fullscreen" data-id="${c.id}" title="Fullscreen">
+                <i data-lucide="maximize"></i>
+              </button>
+            </div>`;
+          camGrid.appendChild(card);
+        });
+        if (window.lucide) lucide.createIcons();
+        refreshCameraStatus(camGrid);
+      } catch { /* noop */ }
     }
 
     async function refreshAttendance() {
-      const rows = await j("/api/enterprise/attendance?type=student");
-      attendanceTbody.innerHTML = "";
-      if (!rows.length) {
-        attendanceTbody.innerHTML = `<tr><td colspan="6" class="empty">No attendance recorded today.</td></tr>`;
-        return;
+      if (!attendanceTbody || isAttendanceInFlight || document.hidden) return;
+      isAttendanceInFlight = true;
+      try {
+        const rows = await j("/api/enterprise/attendance?type=student");
+        attendanceTbody.innerHTML = "";
+        if (!rows || !rows.length) {
+          attendanceTbody.innerHTML = `<tr><td colspan="6" class="empty">No attendance recorded today.</td></tr>`;
+          return;
+        }
+        rows.forEach((r) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${r.in_time ? new Date(r.in_time).toLocaleTimeString() : "—"}</td>
+            <td>${escapeHtml(r.name || "")}</td>
+            <td>${escapeHtml(r.roll_no || "")}</td>
+            <td>${escapeHtml(r.class_name || "")}</td>
+            <td>${escapeHtml(r.camera_name || "")}</td>
+            <td>${(r.confidence || 0).toFixed(2)}</td>`;
+          attendanceTbody.appendChild(tr);
+        });
+      } catch { /* noop */ }
+      finally {
+        isAttendanceInFlight = false;
       }
-      rows.forEach((r) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${r.in_time ? new Date(r.in_time).toLocaleTimeString() : "—"}</td>
-          <td>${escapeHtml(r.name || "")}</td>
-          <td>${escapeHtml(r.roll_no || "")}</td>
-          <td>${escapeHtml(r.class_name || "")}</td>
-          <td>${escapeHtml(r.camera_name || "")}</td>
-          <td>${(r.confidence || 0).toFixed(2)}</td>`;
-        attendanceTbody.appendChild(tr);
-      });
     }
 
     async function refreshUnknown() {
-      const rows = await j("/api/unknown-faces");
-      const list = rows.slice(0, 10);
-      if (!list.length) {
-        unknownList.innerHTML = `<li class="empty">No unknown faces recorded.</li>`;
-        return;
+      if (!unknownList || isUnknownInFlight || document.hidden) return;
+      isUnknownInFlight = true;
+      try {
+        const rows = await j("/api/unknown-faces");
+        const list = (rows || []).slice(0, 10);
+        if (!list.length) {
+          unknownList.innerHTML = `<li class="empty">No unknown faces recorded.</li>`;
+          return;
+        }
+        unknownList.innerHTML = list.map((r) => `
+          <li>
+            <span><i data-lucide="help-circle"></i> ${escapeHtml(r.camera_name || "Unknown")}</span>
+            <span class="muted small">${new Date(r.timestamp).toLocaleString()}</span>
+          </li>`).join("");
+        if (window.lucide) lucide.createIcons();
+      } catch { /* noop */ }
+      finally {
+        isUnknownInFlight = false;
       }
-      unknownList.innerHTML = list.map((r) => `
-        <li>
-          <span><i data-lucide="help-circle"></i> ${escapeHtml(r.camera_name || "Unknown")}</span>
-          <span class="muted small">${new Date(r.timestamp).toLocaleString()}</span>
-        </li>`).join("");
-      if (window.lucide) lucide.createIcons();
     }
 
     camGrid && camGrid.addEventListener("click", async (e) => {
@@ -173,14 +210,25 @@
       refreshStats();
     });
 
+    // Initial load
     refreshStats();
     refreshCams();
     refreshAttendance();
-    refreshUnknown();
-    setInterval(refreshStats, 8000);
-    setInterval(refreshAttendance, 4000);
-    setInterval(refreshUnknown, 10000);
-    setInterval(() => refreshCameraStatus(camGrid), 3000);
+
+    // Sensible polling intervals:
+    // Camera status: 12s, Attendance: 20s, Statistics: 25s, Unknown faces: 45s
+    dashboardTimers.push(setInterval(() => { if (!document.hidden) refreshCameraStatus(camGrid); }, 12000));
+    dashboardTimers.push(setInterval(() => { if (!document.hidden) refreshAttendance(); }, 20000));
+    dashboardTimers.push(setInterval(() => { if (!document.hidden) refreshStats(); }, 25000));
+    dashboardTimers.push(setInterval(() => { if (!document.hidden) refreshUnknown(); }, 45000));
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && activePage() === "dashboard") {
+        refreshStats();
+        refreshAttendance();
+        refreshCameraStatus(camGrid);
+      }
+    });
   }
 
   // ============================================================ STUDENTS
@@ -558,21 +606,16 @@
         : rows;
       if (countEl) countEl.textContent = `${filtered.length} teachers`;
       if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty">No teachers found.</td></tr>`; return;
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">No teachers found.</td></tr>`; return;
       }
       tbody.innerHTML = filtered.map((t) => {
-        const hasFace = t.has_encoding || t.encoding != null;
-        const extraCount = Array.isArray(t.extra_encodings) ? t.extra_encodings.length : 0;
-        const totalAngles = hasFace ? 1 + extraCount : 0;
-        const faceBadge = hasFace
-          ? `<span class="badge ok"><i data-lucide="check-circle"></i> Registered (${totalAngles} ${totalAngles === 1 ? 'angle' : 'angles'})</span>`
-          : `<span class="badge warn"><i data-lucide="alert-circle"></i> No Face</span>`;
+        const profileUrl = `/teachers/${t.id}/profile`;
         return `
         <tr>
           <td><strong>${escapeHtml(t.teacher_id)}</strong></td>
           <td>
-            <div style="display:flex;align-items:center;gap:8px;">
-              ${t.photo_path ? `<img src="/static/${t.photo_path}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" />` : `<div style="width:32px;height:32px;border-radius:50%;background:var(--primary-subtle,#e0e7ff);display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary);">${escapeHtml((t.name || "T")[0].toUpperCase())}</div>`}
+            <div style="display:flex;align-items:center;gap:10px;">
+              ${t.photo_path ? `<img src="/static/${t.photo_path}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;" />` : `<div style="width:34px;height:34px;border-radius:50%;background:var(--primary-subtle,#e0e7ff);display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--primary);">${escapeHtml((t.name || "T")[0].toUpperCase())}</div>`}
               <div>
                 <strong>${escapeHtml(t.name)}</strong>
               </div>
@@ -580,16 +623,9 @@
           </td>
           <td>${escapeHtml(t.department || "General")} <br/><small class="muted">${escapeHtml(t.designation || "Teacher")}</small></td>
           <td>${escapeHtml(t.subject || "All Subjects")} <br/><small class="muted">Classes: ${escapeHtml(t.assigned_classes || "N/A")}</small></td>
-          <td>${escapeHtml(t.mobile || "-")} <br/><small class="muted">${escapeHtml(t.email || "-")}</small></td>
-          <td>${faceBadge}</td>
-          <td><span class="badge ${t.is_active ? "ok" : "muted"}">${t.is_active ? "Active" : "Inactive"}</span></td>
+          <td><span class="badge ${t.is_active ? "ok" : "muted"}">${t.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
           <td>
-            <div style="display:flex;gap:4px;flex-wrap:wrap;">
-              <button class="btn-primary" data-action="upload" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="Register Face / Upload Photo"><i data-lucide="camera"></i> Face</button>
-              <button class="btn-secondary" data-action="profile" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="View Profile"><i data-lucide="user"></i> Profile</button>
-              <button class="btn-secondary" data-action="edit" data-id="${t.id}" title="Edit Teacher"><i data-lucide="edit"></i></button>
-              <button class="btn-danger" data-action="delete" data-id="${t.id}" title="Delete Teacher"><i data-lucide="trash-2"></i></button>
-            </div>
+            <a class="btn-secondary small" href="${profileUrl}" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;" title="View Complete 360° Profile"><i data-lucide="user"></i> Profile</a>
           </td>
         </tr>`;
       }).join("");
@@ -613,6 +649,8 @@
           fields: [
             { name: "teacher_id", label: "Teacher ID", required: true },
             { name: "name", label: "Name", required: true },
+            { name: "attendance_method", label: "Attendance Identification Method", type: "select", options: [{v:"FACE",t:"Face Recognition (CCTV/Webcam)"},{v:"FINGERPRINT",t:"BioMax Indigo Fingerprint Device"}] },
+            { name: "fingerprint_user_id", label: "BioMax Device User ID (optional, defaults to Teacher ID)" },
             { name: "department", label: "Department (e.g. Science, Mathematics)" },
             { name: "designation", label: "Designation (e.g. Senior Teacher, HOD)" },
             { name: "subject", label: "Subject" },
@@ -634,6 +672,7 @@
       const title = $("#tp-modal-title");
       const body = $("#tp-modal-body");
       const regBtn = $("#tp-btn-register");
+      const fpBtn = $("#tp-btn-fingerprint");
 
       if (title) title.textContent = `Teacher Profile \u2014 ${tname}`;
       if (body) body.innerHTML = `<div class="empty">Loading teacher profile...</div>`;
@@ -641,17 +680,35 @@
 
       try {
         const prof = await j(`/api/teachers/${tid}/profile`);
+        const btn360 = $("#tp-btn-360");
+        if (btn360) {
+          btn360.href = `/hr/employees/${prof.linked_employee_id || prof.id}`;
+        }
         if (regBtn) {
           regBtn.onclick = () => {
             closeModal("#teacher-profile-modal");
             openUploadModal(prof.id, prof.name, "teacher");
           };
         }
+        if (fpBtn) {
+          fpBtn.onclick = async () => {
+            try {
+              const res = await j(`/api/teachers/${prof.id}/fingerprint/enroll`, { method: "POST" });
+              showResult({ title: "BioMax Indigo Enrollment", ok: true, message: res.message || "Fingerprint enrolled." });
+              showTeacherProfile(tid, tname);
+              load();
+            } catch (err) {
+              showResult({ title: "Enrollment Failed", ok: false, message: err.message || "Could not enroll on BioMax Indigo device." });
+            }
+          };
+        }
         const m = prof.month || {};
         const last = prof.last_recognition;
         const lastRecText = last
-          ? `${last.event_type.toUpperCase()} at ${new Date(last.event_time).toLocaleTimeString()} (${Math.round((last.confidence || 0) * 100)}% conf on ${last.camera || 'Camera'})`
+          ? `${last.event_type.toUpperCase()} at ${new Date(last.event_time).toLocaleTimeString()} (${Math.round((last.confidence || 0) * 100)}% conf on ${last.camera || 'Device'})`
           : "No recognition recorded yet";
+
+        const method = (prof.attendance_method || "FACE").toUpperCase();
 
         if (body) {
           body.innerHTML = `
@@ -659,28 +716,38 @@
               <div style="text-align:center;">
                 ${prof.photo_path ? `<img src="/static/${prof.photo_path}" style="width:100px;height:100px;border-radius:12px;object-fit:cover;border:2px solid var(--border);" />` : `<div style="width:100px;height:100px;border-radius:12px;background:var(--primary-subtle,#e0e7ff);display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:bold;color:var(--primary);">${escapeHtml((prof.name || "T")[0].toUpperCase())}</div>`}
                 <div style="margin-top:8px;">
-                  <span class="badge ${prof.face_registered ? "ok" : "warn"}">${prof.recognition_status || (prof.face_registered ? "Registered" : "No Face")}</span>
+                  <span class="badge ${method === 'FACE' ? (prof.face_registered ? 'ok' : 'warn') : (prof.fingerprint_enrolled ? 'ok' : 'warn')}">
+                    ${method === 'FACE' ? (prof.face_registered ? 'Face Ready' : 'No Face') : (prof.fingerprint_enrolled ? 'FP Enrolled' : 'FP Not Enrolled')}
+                  </span>
                 </div>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                 <div><span class="muted small">Teacher ID:</span> <br/><strong>${escapeHtml(prof.teacher_id)}</strong></div>
+                <div><span class="muted small">Attendance Method:</span> <br/><strong><span class="badge" style="background:#e0e7ff;color:#3730a3;">${escapeHtml(method)}</span></strong></div>
                 <div><span class="muted small">Department:</span> <br/><strong>${escapeHtml(prof.department || "General")}</strong></div>
                 <div><span class="muted small">Designation:</span> <br/><strong>${escapeHtml(prof.designation || "Teacher")}</strong></div>
                 <div><span class="muted small">Subject:</span> <br/><strong>${escapeHtml(prof.subject || "All Subjects")}</strong></div>
-                <div><span class="muted small">Assigned Classes:</span> <br/><strong>${escapeHtml(prof.assigned_classes || "None")}</strong></div>
                 <div><span class="muted small">Contact:</span> <br/><strong>${escapeHtml(prof.mobile || "-")} / ${escapeHtml(prof.email || "-")}</strong></div>
               </div>
             </div>
 
             <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;" />
 
-            <h4 style="margin-bottom:12px;"><i data-lucide="scan-face"></i> Face Registration &amp; Encodings Status</h4>
-            <div style="background:var(--surface,#f8fafc);padding:12px;border-radius:8px;margin-bottom:16px;">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <div><span class="muted small">Registration Status:</span> <strong>${prof.face_registered ? "Registered & Active" : "Not Registered"}</strong></div>
-                <div><span class="muted small">Total Encodings:</span> <strong>${prof.encodings_count || 0} angles</strong></div>
-                <div><span class="muted small">Angles Enrolled:</span> <strong>${(prof.angles || []).join(", ") || "None"}</strong></div>
-                <div><span class="muted small">Last Recognition:</span> <strong>${escapeHtml(lastRecText)}</strong></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+              <div style="background:var(--surface,#f8fafc);padding:12px;border-radius:8px;">
+                <h4 style="margin-bottom:8px;font-size:0.95rem;"><i data-lucide="scan-face"></i> Face Registration</h4>
+                <div class="small">
+                  <div>Status: <strong>${prof.face_registered ? "Registered & Active" : "Not Registered"}</strong></div>
+                  <div>Encodings: <strong>${prof.encodings_count || 0} angles (${(prof.angles || []).join(", ") || "None"})</strong></div>
+                </div>
+              </div>
+              <div style="background:var(--surface,#f8fafc);padding:12px;border-radius:8px;">
+                <h4 style="margin-bottom:8px;font-size:0.95rem;"><i data-lucide="fingerprint"></i> BioMax Indigo Fingerprint</h4>
+                <div class="small">
+                  <div>Status: <strong>${prof.fingerprint_enrolled ? "Enrolled on Device" : "Not Enrolled"}</strong></div>
+                  <div>Device User ID: <strong>${escapeHtml(prof.fingerprint_user_id || prof.teacher_id)}</strong></div>
+                  <div>Enrolled At: <strong>${prof.fingerprint_enrolled_at ? new Date(prof.fingerprint_enrolled_at).toLocaleString() : "Never"}</strong></div>
+                </div>
               </div>
             </div>
 
@@ -720,8 +787,16 @@
 
       if (action === "upload") {
         openUploadModal(id, name, "teacher");
+      } else if (action === "fingerprint") {
+        try {
+          const res = await j(`/api/teachers/${id}/fingerprint/enroll`, { method: "POST" });
+          showResult({ title: "BioMax Fingerprint", ok: true, message: res.message || `${name} fingerprint registered on BioMax device.` });
+          load();
+        } catch (err) {
+          showResult({ title: "Enrollment Failed", ok: false, message: err.message || "Failed to communicate with BioMax Indigo device." });
+        }
       } else if (action === "profile") {
-        showTeacherProfile(id, name);
+        window.location.href = `/teachers/${id}/profile`;
       } else if (action === "delete") {
         if (!confirm(`Delete teacher ${name}?`)) return;
         await j(`/api/teachers/${id}`, { method: "DELETE" });
@@ -735,6 +810,9 @@
           fields: [
             { name: "teacher_id", label: "Teacher ID", required: true },
             { name: "name", label: "Name", required: true },
+            { name: "attendance_method", label: "Attendance Identification Method", type: "select", options: [{v:"FACE",t:"Face Recognition (CCTV/Webcam)"},{v:"FINGERPRINT",t:"BioMax Indigo Fingerprint Device"}] },
+            { name: "fingerprint_user_id", label: "BioMax Device User ID" },
+            { name: "fingerprint_enrolled", label: "Fingerprint Enrolled on Device", type: "select", options: [{v:"true",t:"Enrolled"},{v:"false",t:"Not Enrolled"}] },
             { name: "department", label: "Department" },
             { name: "designation", label: "Designation" },
             { name: "subject", label: "Subject" },
@@ -745,6 +823,7 @@
           ],
           onSave: async (v) => {
             v.is_active = String(v.is_active).toLowerCase() === "true";
+            v.fingerprint_enrolled = String(v.fingerprint_enrolled).toLowerCase() === "true";
             await j(`/api/teachers/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
             showResult({ title: "Teacher updated", ok: true, message: `${v.name} saved.` });
             load();
@@ -783,6 +862,9 @@
             ${cameraMetaHtml(c)}
           </div>
           <div class="cam-foot">
+            <button class="${c.is_active ? "btn-secondary" : "btn-primary"}" data-action="toggle" data-id="${c.id}">
+              <i data-lucide="${c.is_active ? "square" : "play"}"></i> ${c.is_active ? "Stop" : "Start"}
+            </button>
             <button class="btn-secondary" data-action="test" data-id="${c.id}"><i data-lucide="wifi"></i> Test</button>
             <button class="btn-secondary" data-action="edit" data-id="${c.id}"><i data-lucide="edit"></i> Edit</button>
             <button class="btn-danger" data-action="delete" data-id="${c.id}"><i data-lucide="trash-2"></i></button>
@@ -812,7 +894,13 @@
       const btn = e.target.closest("button[data-action]");
       if (!btn) return;
       const id = btn.dataset.id;
-      if (btn.dataset.action === "test") {
+      if (btn.dataset.action === "toggle") {
+        const cams = await j("/api/cameras");
+        const cam = cams.find((r) => r.id == id);
+        const action = cam && cam.is_active ? "stop" : "start";
+        await j(`/api/cameras/${id}/${action}`, { method: "POST" });
+        load();
+      } else if (btn.dataset.action === "test") {
         const r = await j(`/api/cameras/${id}/test`, { method: "POST" });
         showResult({ title: r.ok ? "Reachable" : "Unreachable", ok: r.ok, message: r.message || r.source || "" });
       } else if (btn.dataset.action === "delete") {
@@ -853,6 +941,9 @@
     });
 
     load();
+    setInterval(() => {
+      if (!document.hidden) refreshCameraStatus(grid);
+    }, 12000);
   }
 
   // ============================================================ SETTINGS
@@ -862,13 +953,52 @@
     if (t && tv) {
       t.addEventListener("input", () => { tv.textContent = t.value; });
     }
-    // Populate school meta + system versions
-    j("/api/meta").then((m) => {
-      const nameEl = $("#set-school-name");
-      if (nameEl) nameEl.value = m.school_name;
+    // Populate school details
+    j("/api/settings/school").then((data) => {
+      const sch = data.school || data;
+      if (sch) {
+        const idEl = $("#set-school-id");
+        const nameEl = $("#set-school-name");
+        const emailEl = $("#set-school-email");
+        const phoneEl = $("#set-school-phone");
+        if (idEl && sch.school_id) idEl.value = sch.school_id;
+        if (nameEl && sch.name) nameEl.value = sch.name;
+        if (emailEl && sch.contact_email) emailEl.value = sch.contact_email;
+        if (phoneEl && sch.contact_phone) phoneEl.value = sch.contact_phone;
+      }
     }).catch(() => {});
+
+    const btnSaveSchool = $("#btn-save-school");
+    if (btnSaveSchool) {
+      btnSaveSchool.addEventListener("click", async () => {
+        const name = $("#set-school-name")?.value.trim();
+        const contact_email = $("#set-school-email")?.value.trim();
+        const contact_phone = $("#set-school-phone")?.value.trim();
+        if (!name) {
+          showResult({ title: "Validation Error", ok: false, message: "School name is required." });
+          return;
+        }
+        try {
+          const res = await j("/api/settings/school", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, contact_email, contact_phone }),
+          });
+          if (res.ok || res.school) {
+            showResult({ title: "School Profile Saved", ok: true, message: "Institution branding updated successfully." });
+            const brandTitle = document.querySelector(".brand-title");
+            if (brandTitle) brandTitle.textContent = name;
+          } else {
+            showResult({ title: "Error", ok: false, message: res.error || "Failed to update school settings." });
+          }
+        } catch (err) {
+          showResult({ title: "Save Failed", ok: false, message: err.message || "Network error" });
+        }
+      });
+    }
+
     try {
-      $("#sys-cv").textContent = "opencv";
+      $("#sys-cv").textContent = "opencv-python";
       $("#sys-flask").textContent = "Flask";
       $("#sys-if").textContent = "insightface";
     } catch { /* noop */ }

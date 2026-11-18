@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}IN/OUT Attendance - Krishna English School ERP{% endblock %}
+{% block title %}IN/OUT Attendance - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="clock-4"></i><span>IN/OUT Attendance</span>
 {% endblock %}

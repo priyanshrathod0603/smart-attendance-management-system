@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Time Reports - Krishna English School ERP{% endblock %}
+{% block title %}Time Reports - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}<i data-lucide="file-clock"></i><span>Time Reports</span>{% endblock %}
 {% block content %}
 <div class="welcome-banner"><h1>Attendance Time Reports</h1><p>Preview live attendance data before exporting it.</p></div>

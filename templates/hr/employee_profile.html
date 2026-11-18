@@ -1,112 +1,322 @@
 {% extends "base.html" %}
-{% block title %}Employee Profile - Krishna ERP{% endblock %}
+{% block title %}Employee 360° Profile - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="briefcase"></i><span>HR Management</span> 
   <i data-lucide="chevron-right"></i> <a href="{{ url_for('page_hr_employees') }}">Employees</a>
-  <i data-lucide="chevron-right"></i> <span id="crumb-emp-name">Profile</span>
+  <i data-lucide="chevron-right"></i> <span id="crumb-emp-name">360° Profile</span>
 {% endblock %}
 
 {% block content %}
-<!-- Employee Profile Header Card -->
-<section class="card glass" style="margin-bottom: 24px;">
-  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-    <div style="display: flex; align-items: center; gap: 16px;">
-      <div style="width: 64px; height: 64px; border-radius: var(--radius-full); background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700;" id="prof-avatar">
-        E
+<!-- Employee 360° Profile Header Card -->
+<section class="card glass" style="margin-bottom: 24px; padding: 24px; border: 1px solid var(--border);">
+  <div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 20px;">
+    <div style="display: flex; align-items: center; gap: 20px;">
+      <div style="position: relative;">
+        <div style="width: 76px; height: 76px; border-radius: var(--radius-full); background: linear-gradient(135deg, var(--accent), #4f46e5); color: white; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden;" id="prof-avatar-container">
+          <span id="prof-avatar">E</span>
+          <img id="prof-avatar-img" src="" alt="Profile" style="display: none; width: 100%; height: 100%; object-fit: cover;" />
+        </div>
+        <span id="prof-avatar-dot" style="position: absolute; bottom: 2px; right: 2px; width: 14px; height: 14px; border-radius: 50%; background: #22c55e; border: 2px solid var(--bg);"></span>
       </div>
       <div>
-        <h2 id="prof-name" style="margin: 0;">Loading Employee...</h2>
-        <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;" class="muted small">
-          <span id="prof-code" style="font-weight: 600;">--</span>
-          <span>&bull;</span>
-          <span id="prof-dept-desig">--</span>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <h2 id="prof-name" style="margin: 0; font-size: 1.5rem; font-weight: 700;">Loading Employee...</h2>
+          <span id="prof-code" class="badge gray" style="font-weight: 600; font-family: monospace;">--</span>
           <span id="prof-status-badge"></span>
+          <span id="prof-teacher-badge"></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px; flex-wrap: wrap;" class="muted small">
+          <span id="prof-dept-desig" style="font-weight: 600; color: var(--text);">--</span>
+          <span>&bull;</span>
+          <span id="prof-campus-team">Campus: Main</span>
+          <span>&bull;</span>
+          <span id="prof-joining-span">Joined: --</span>
+          <span>&bull;</span>
+          <span id="prof-shift-span">Shift: 08:00 - 14:00</span>
         </div>
       </div>
     </div>
-    <div style="display: flex; gap: 8px;">
-      <button class="btn-primary" id="btn-edit-profile" type="button">
-        <i data-lucide="edit-3"></i> Edit Employee
+
+    <!-- Quick Action Toolbar -->
+    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+      <button class="btn-secondary small" id="btn-quick-id-card" type="button" title="View & Print ID Card">
+        <i data-lucide="qr-code"></i> ID Card
       </button>
-      <a href="{{ url_for('page_hr_employees') }}" class="btn-secondary">
-        <i data-lucide="arrow-left"></i> Back to Employees
-      </a>
+      <button class="btn-secondary small" id="btn-open-transfer" type="button" title="Transfer Department">
+        <i data-lucide="arrow-right-left"></i> Transfer
+      </button>
+      <button class="btn-secondary small" id="btn-open-desig" type="button" title="Change Designation">
+        <i data-lucide="award"></i> Designation
+      </button>
+      <button class="btn-secondary small" id="btn-open-manager" type="button" title="Change Manager">
+        <i data-lucide="user-check"></i> Manager
+      </button>
+      <button class="btn-secondary small" id="btn-open-promotion" type="button" title="Record Promotion">
+        <i data-lucide="trending-up"></i> Promotion
+      </button>
+      <button class="btn-secondary small" id="btn-open-status" type="button" title="Change Status / Exit">
+        <i data-lucide="shield-alert"></i> Status
+      </button>
+      <button class="btn-primary small" id="btn-edit-profile" type="button">
+        <i data-lucide="edit-3"></i> Edit
+      </button>
     </div>
   </div>
 </section>
 
-<!-- Profile Tabs Navigation -->
-<div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--glass-border); margin-bottom: 20px; overflow-x: auto; padding-bottom: 8px;">
-  <button class="btn-secondary tab-btn active" data-tab="tab-personal"><i data-lucide="user"></i> Personal</button>
-  <button class="btn-secondary tab-btn" data-tab="tab-employment"><i data-lucide="briefcase"></i> Employment</button>
-  <button class="btn-secondary tab-btn" data-tab="tab-attendance"><i data-lucide="calendar"></i> Attendance</button>
-  <button class="btn-secondary tab-btn" data-tab="tab-leave"><i data-lucide="user-minus"></i> Leave</button>
-  <button class="btn-secondary tab-btn" data-tab="tab-salary"><i data-lucide="indian-rupee"></i> Salary</button>
-  <button class="btn-secondary tab-btn" data-tab="tab-overtime"><i data-lucide="clock"></i> Overtime</button>
+<!-- 360° Profile Tabs Navigation -->
+<div class="tabs-header" style="display: flex; gap: 8px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; padding-bottom: 8px;">
+  <button class="btn-secondary tab-btn active" data-tab="tab-overview"><i data-lucide="layout-dashboard"></i> Overview</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-attendance"><i data-lucide="calendar-check"></i> Attendance History</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-late"><i data-lucide="clock"></i> Late Intelligence</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-leaves"><i data-lucide="calendar-off"></i> Holidays &amp; Leaves</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-salary"><i data-lucide="indian-rupee"></i> Salary &amp; Payroll</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-documents"><i data-lucide="file-text"></i> Documents</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-timeline"><i data-lucide="activity"></i> Timeline</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-personal"><i data-lucide="user"></i> Personal</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-org"><i data-lucide="sitemap"></i> Organization</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-history"><i data-lucide="history"></i> Lifecycle History</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-family"><i data-lucide="heart-handshake"></i> Dependents</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-emergency"><i data-lucide="phone-call"></i> Emergency Contacts</button>
   <button class="btn-secondary tab-btn" data-tab="tab-loans"><i data-lucide="credit-card"></i> Loans</button>
-  <button class="btn-secondary tab-btn" data-tab="tab-payslips"><i data-lucide="file-text"></i> Payslips</button>
+  <button class="btn-secondary tab-btn" data-tab="tab-id-badge"><i data-lucide="badge-check"></i> ID Badge</button>
 </div>
 
-<!-- Tab Content Panels -->
+<!-- ================= TAB PANELS ================= -->
 
-<!-- 1. PERSONAL TAB -->
-<div id="tab-personal" class="tab-panel active">
-  <div class="card glass">
-    <div class="card-head"><h2>Personal Details</h2></div>
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 12px 0;">
-      <div><div class="muted small">Full Name</div><div style="font-weight:600;" id="p-fullname">--</div></div>
-      <div><div class="muted small">Gender</div><div style="font-weight:600;" id="p-gender">--</div></div>
-      <div><div class="muted small">Date of Birth</div><div style="font-weight:600;" id="p-dob">--</div></div>
-      <div><div class="muted small">Email Address</div><div style="font-weight:600;" id="p-email">--</div></div>
-      <div><div class="muted small">Phone Number</div><div style="font-weight:600;" id="p-phone">--</div></div>
-      <div><div class="muted small">Alternate Phone</div><div style="font-weight:600;" id="p-alt-phone">--</div></div>
-      <div style="grid-column: span 3;"><div class="muted small">Address</div><div style="font-weight:600;" id="p-address">--</div></div>
-      <div><div class="muted small">Emergency Contact Person</div><div style="font-weight:600;" id="p-emg-name">--</div></div>
-      <div><div class="muted small">Emergency Contact Phone</div><div style="font-weight:600;" id="p-emg-phone">--</div></div>
+<!-- 1. OVERVIEW TAB -->
+<div id="tab-overview" class="tab-panel active">
+  <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+    <!-- Key Information Cards -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="card glass">
+        <div class="card-head"><h2>Executive Summary</h2></div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 8px 0;">
+          <div><div class="muted small">Department</div><div style="font-weight: 700; font-size: 1.05rem;" id="ov-dept">--</div></div>
+          <div><div class="muted small">Designation</div><div style="font-weight: 700; font-size: 1.05rem;" id="ov-desig">--</div></div>
+          <div><div class="muted small">Employment Type</div><div style="font-weight: 600;" id="ov-type">--</div></div>
+          <div><div class="muted small">Job Level &amp; Grade</div><div style="font-weight: 600;" id="ov-level-grade">--</div></div>
+          <div><div class="muted small">Campus / Cost Center</div><div style="font-weight: 600;" id="ov-campus-cc">--</div></div>
+          <div><div class="muted small">Tenure</div><div style="font-weight: 600;" id="ov-tenure">--</div></div>
+          <div><div class="muted small">Assigned Shift</div><div style="font-weight: 600;" id="ov-shift">08:00 - 14:00</div></div>
+          <div><div class="muted small">Monthly Base Salary</div><div style="font-weight: 700; color: var(--accent);" id="ov-salary">₹0.00</div></div>
+          <div><div class="muted small">Annual CTC</div><div style="font-weight: 700;" id="ov-ctc">₹0.00</div></div>
+        </div>
+      </div>
+
+      <div class="card glass">
+        <div class="card-head">
+          <h2>Recent Activity Feed</h2>
+          <button class="btn-secondary small" type="button" onclick="document.querySelector('[data-tab=tab-timeline]').click()">View All Timeline</button>
+        </div>
+        <div id="ov-recent-timeline" style="padding-top: 8px;">
+          <div class="empty">Loading recent events...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hierarchy & Contact Quick Panel -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="card glass">
+        <div class="card-head"><h2>Reporting Line</h2></div>
+        <div style="padding: 8px 0;">
+          <div class="muted small">Reports To</div>
+          <div style="margin-top: 4px; display: flex; align-items: center; gap: 10px;" id="ov-manager-box">
+            <div style="width: 38px; height: 38px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-weight: 700;" id="ov-mgr-avatar">M</div>
+            <div>
+              <div style="font-weight: 600;" id="ov-manager-name">No Direct Manager</div>
+              <div class="muted small" id="ov-manager-title">--</div>
+            </div>
+          </div>
+          <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <div class="muted small">Direct Reports</div>
+            <div style="font-weight: 700; font-size: 1.2rem; margin-top: 2px;" id="ov-direct-reports-count">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card glass">
+        <div class="card-head"><h2>Contact Snapshot</h2></div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 6px 0;">
+          <div><div class="muted small">Official Email</div><div style="font-weight: 600;" id="ov-email">--</div></div>
+          <div><div class="muted small">Mobile Phone</div><div style="font-weight: 600;" id="ov-phone">--</div></div>
+          <div><div class="muted small">Emergency Contact</div><div style="font-weight: 600;" id="ov-emg">--</div></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- 2. EMPLOYMENT TAB -->
-<div id="tab-employment" class="tab-panel" style="display:none;">
-  <div class="card glass" style="margin-bottom: 20px;">
-    <div class="card-head"><h2>Employment Details</h2></div>
-    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 12px 0;">
-      <div><div class="muted small">Employee Code</div><div style="font-weight:600;" id="e-code">--</div></div>
-      <div><div class="muted small">Department</div><div style="font-weight:600;" id="e-dept">--</div></div>
-      <div><div class="muted small">Designation</div><div style="font-weight:600;" id="e-desig">--</div></div>
-      <div><div class="muted small">Employment Type</div><div style="font-weight:600;" id="e-type">--</div></div>
-      <div><div class="muted small">Employment Status</div><div style="font-weight:600;" id="e-status">--</div></div>
-      <div><div class="muted small">Joining Date</div><div style="font-weight:600;" id="e-joining">--</div></div>
-      <div><div class="muted small">Confirmation Date</div><div style="font-weight:600;" id="e-confirmation">--</div></div>
-      <div><div class="muted small">Reporting Manager</div><div style="font-weight:600;" id="e-manager">--</div></div>
-      <div><div class="muted small">Linked Teacher ID</div><div style="font-weight:600;" id="e-teacher">--</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- 3. ATTENDANCE TAB -->
+<!-- 2. ATTENDANCE HISTORY TAB (SECTION B) -->
 <div id="tab-attendance" class="tab-panel" style="display:none;">
+  <!-- Date / Month Filter Bar -->
+  <section class="card glass filters" style="margin-bottom: 20px; padding: 14px 20px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div>
+          <label class="small muted" style="display:block; margin-bottom: 4px; font-weight:600;">Filter by Month</label>
+          <input type="month" id="att-filter-month" class="input-text" style="width: auto; padding: 6px 12px;" />
+        </div>
+        <div>
+          <label class="small muted" style="display:block; margin-bottom: 4px; font-weight:600;">Or Date Range</label>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <input type="date" id="att-filter-start" class="input-text" style="width: auto; padding: 6px 10px;" />
+            <span class="muted">&rarr;</span>
+            <input type="date" id="att-filter-end" class="input-text" style="width: auto; padding: 6px 10px;" />
+          </div>
+        </div>
+        <div style="margin-top: 18px;">
+          <button class="btn-primary small" id="btn-apply-att-filter" type="button"><i data-lucide="filter"></i> Apply Filter</button>
+          <button class="btn-secondary small" id="btn-reset-att-filter" type="button">Current Month</button>
+        </div>
+      </div>
+      <div class="muted small" id="att-range-label" style="font-weight: 600;">
+        Viewing: Current Month
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 Calculated KPI Stat Cards -->
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px;">
+    <div class="stat-card glass" style="padding: 14px; border-left: 4px solid #22c55e;">
+      <div class="muted small">Total Present Days</div>
+      <div class="stat-value" id="kpi-present-days" style="font-size: 1.6rem; color: #22c55e; margin: 4px 0;">--</div>
+      <div class="stat-trend small muted">On-time campus attendance</div>
+    </div>
+    <div class="stat-card glass" style="padding: 14px; border-left: 4px solid #ef4444;">
+      <div class="muted small">Total Absent Days</div>
+      <div class="stat-value" id="kpi-absent-days" style="font-size: 1.6rem; color: #ef4444; margin: 4px 0;">--</div>
+      <div class="stat-trend small muted">Unexcused / missing days</div>
+    </div>
+    <div class="stat-card glass" style="padding: 14px; border-left: 4px solid #f59e0b;">
+      <div class="muted small">Total Late Arrivals</div>
+      <div class="stat-value" id="kpi-late-count" style="font-size: 1.6rem; color: #f59e0b; margin: 4px 0;">--</div>
+      <div class="stat-trend small muted">Arrivals after shift start</div>
+    </div>
+    <div class="stat-card glass" style="padding: 14px; border-left: 4px solid #f97316;">
+      <div class="muted small">Total Late Minutes</div>
+      <div class="stat-value" id="kpi-late-minutes" style="font-size: 1.6rem; color: #f97316; margin: 4px 0;">--</div>
+      <div class="stat-trend small muted">Accumulated arrival delay</div>
+    </div>
+    <div class="stat-card glass" style="padding: 14px; border-left: 4px solid #3b82f6;">
+      <div class="muted small">Total Approved Leaves</div>
+      <div class="stat-value" id="kpi-leave-days" style="font-size: 1.6rem; color: #3b82f6; margin: 4px 0;">--</div>
+      <div class="stat-trend small muted">Approved paid / casual leaves</div>
+    </div>
+    <div class="stat-card glass" style="padding: 14px; border-left: 4px solid #8b5cf6;">
+      <div class="muted small">Total Holidays / Offs</div>
+      <div class="stat-value" id="kpi-holidays" style="font-size: 1.6rem; color: #8b5cf6; margin: 4px 0;">--</div>
+      <div class="stat-trend small muted">School &amp; public holidays</div>
+    </div>
+    <div class="stat-card glass" style="padding: 14px; border-left: 4px solid #06b6d4;">
+      <div class="muted small">Total Half-Days</div>
+      <div class="stat-value" id="kpi-half-days" style="font-size: 1.6rem; color: #06b6d4; margin: 4px 0;">--</div>
+      <div class="stat-trend small muted">Partial attendance sessions</div>
+    </div>
+    <div class="stat-card glass" style="padding: 14px; border-left: 4px solid #10b981;">
+      <div class="muted small">Attendance Percentage</div>
+      <div class="stat-value" id="kpi-attendance-pct" style="font-size: 1.6rem; color: #10b981; margin: 4px 0;">--%</div>
+      <div class="stat-trend small muted">Working day compliance</div>
+    </div>
+  </div>
+
+  <!-- Daily Attendance History Table -->
   <div class="card glass">
-    <div class="card-head"><h2>Attendance History</h2></div>
-    <div id="att-history-container">
-      <div class="empty">Loading attendance history...</div>
+    <div class="card-head">
+      <div>
+        <h2>Daily Attendance Records</h2>
+        <div class="muted small">Chronological daily check-in, check-out, shifts, working hours, and punch status</div>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Scheduled Shift</th>
+            <th>Check-in</th>
+            <th>Check-out</th>
+            <th>Status</th>
+            <th>Working Hours</th>
+            <th>Late Status</th>
+            <th>Early Departure</th>
+            <th>Half-Day</th>
+            <th>Punches</th>
+          </tr>
+        </thead>
+        <tbody id="att-history-tbody">
+          <tr><td colspan="10" class="empty">Loading daily attendance records...</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
 
-<!-- 4. LEAVE TAB -->
-<div id="tab-leave" class="tab-panel" style="display:none;">
+<!-- 3. LATE ARRIVAL INTELLIGENCE TAB (SECTION C) -->
+<div id="tab-late" class="tab-panel" style="display:none;">
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px;">
+    <div class="card glass" style="padding: 16px; border-left: 4px solid #f59e0b;">
+      <div class="muted small">Monthly Late Incidents</div>
+      <div id="late-intel-count" style="font-size: 2rem; font-weight: 700; color: #f59e0b; margin: 4px 0;">0</div>
+      <div class="muted small">Number of delayed arrivals this period</div>
+    </div>
+    <div class="card glass" style="padding: 16px; border-left: 4px solid #ef4444;">
+      <div class="muted small">Accumulated Delay Minutes</div>
+      <div id="late-intel-minutes" style="font-size: 2rem; font-weight: 700; color: #ef4444; margin: 4px 0;">0 mins</div>
+      <div class="muted small">Total minutes beyond scheduled shift start</div>
+    </div>
+    <div class="card glass" style="padding: 16px; border-left: 4px solid #3b82f6;">
+      <div class="muted small">Configured Grace Threshold</div>
+      <div id="late-intel-grace" style="font-size: 2rem; font-weight: 700; color: #3b82f6; margin: 4px 0;">15 mins</div>
+      <div class="muted small">Late arrival is not auto-deducted unless policy mandates</div>
+    </div>
+  </div>
+
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Late Arrival Log &amp; Analysis</h2>
+        <div class="muted small">Detailed breakdown of each late arrival date, scheduled start, actual in-time, and delay duration</div>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Scheduled Start</th>
+            <th>Actual Arrival</th>
+            <th>Delay in Minutes</th>
+            <th>Policy Status</th>
+            <th>Notes / Exception</th>
+          </tr>
+        </thead>
+        <tbody id="late-intel-tbody">
+          <tr><td colspan="6" class="empty">Loading late arrival intelligence...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 4. HOLIDAYS & LEAVE HISTORY TAB (SECTION D) -->
+<div id="tab-leaves" class="tab-panel" style="display:none;">
+  <!-- Leave Balances -->
   <div class="card glass" style="margin-bottom: 20px;">
     <div class="card-head">
-      <h2>Leave Balances</h2>
+      <div>
+        <h2>Leave Balances (Current Academic Year)</h2>
+        <div class="muted small">Allocated, used, pending, and available days per leave category</div>
+      </div>
       <button class="btn-primary small" id="btn-apply-leave"><i data-lucide="plus"></i> Request Leave</button>
     </div>
     <div id="leave-balances-container" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px;">
       <div class="empty">Loading balances...</div>
     </div>
   </div>
-  <div class="card glass">
+
+  <!-- Leave Requests History -->
+  <div class="card glass" style="margin-bottom: 20px;">
     <div class="card-head"><h2>Leave Requests History</h2></div>
     <div class="table-scroll">
       <table>
@@ -126,9 +336,34 @@
       </table>
     </div>
   </div>
+
+  <!-- Holidays & Weekly Offs Directory -->
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Holidays &amp; Weekly Offs Directory</h2>
+        <div class="muted small">Holidays and scheduled weekly offs are strictly exempted from working days and never counted as absences</div>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Name / Description</th>
+            <th>Type</th>
+            <th>Classification</th>
+          </tr>
+        </thead>
+        <tbody id="holidays-history-tbody">
+          <tr><td colspan="4" class="empty">Loading holidays &amp; weekly offs...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-<!-- 5. SALARY TAB -->
+<!-- 5. SALARY & PAYROLL HISTORY TAB (SECTION E) -->
 <div id="tab-salary" class="tab-panel" style="display:none;">
   <div class="card glass" style="margin-bottom: 20px;">
     <div class="card-head">
@@ -145,7 +380,7 @@
     </div>
   </div>
 
-  <div class="card glass">
+  <div class="card glass" style="margin-bottom: 20px;">
     <div class="card-head"><h2>Configured Salary Components</h2></div>
     <div class="table-scroll">
       <table>
@@ -157,14 +392,45 @@
           </tr>
         </thead>
         <tbody id="salary-components-tbody">
-          <tr><td colspan="3" class="empty">No active salary components</td></tr>
+          <tr><td colspan="3" class="empty">No extra components configured.</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  <div class="card glass" style="margin-top: 20px;">
-    <div class="card-head"><h2>Salary History</h2></div>
+  <!-- Month-Wise Payroll History -->
+  <div class="card glass" style="margin-bottom: 20px;">
+    <div class="card-head">
+      <div>
+        <h2>Month-Wise Payroll Records</h2>
+        <div class="muted small">Historical finalized payrolls, pro-rated attendance deductions, and payslips</div>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Gross Salary</th>
+            <th>Paid Days</th>
+            <th>Unpaid Days</th>
+            <th>Attendance Deductions</th>
+            <th>Other Deductions</th>
+            <th>Net Pay</th>
+            <th>Status</th>
+            <th>Payment Date &amp; Ref</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="payroll-records-tbody">
+          <tr><td colspan="10" class="empty">Loading payroll records...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card glass">
+    <div class="card-head"><h2>Salary Revision History</h2></div>
     <div class="table-scroll">
       <table>
         <thead>
@@ -184,37 +450,240 @@
   </div>
 </div>
 
-<!-- 6. OVERTIME TAB -->
-<div id="tab-overtime" class="tab-panel" style="display:none;">
+<!-- 6. DOCUMENTS TAB (SECTION F) -->
+<div id="tab-documents" class="tab-panel" style="display:none;">
   <div class="card glass">
     <div class="card-head">
-      <h2>Overtime Records</h2>
-      <button class="btn-primary small" id="btn-log-overtime"><i data-lucide="plus"></i> Log Overtime</button>
+      <div>
+        <h2>Employee Documents &amp; Certificates</h2>
+        <div class="muted small">Protected storage for appointment letters, identity proofs, qualification certificates, and agreements</div>
+      </div>
+      <button class="btn-primary small" id="btn-upload-doc"><i data-lucide="upload"></i> Upload Document</button>
     </div>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Minutes</th>
-            <th>Hours</th>
-            <th>Rate</th>
-            <th>Multiplier</th>
-            <th>Amount</th>
-            <th>Status</th>
+            <th>Document Title</th>
+            <th>Type</th>
+            <th>File Name</th>
+            <th>Size</th>
+            <th>Uploaded On</th>
+            <th>Notes</th>
+            <th>Actions</th>
           </tr>
         </thead>
-        <tbody id="overtime-tbody">
-          <tr><td colspan="7" class="empty">Loading overtime records...</td></tr>
+        <tbody id="documents-tbody">
+          <tr><td colspan="7" class="empty">Loading employee documents...</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 </div>
 
-<!-- 7. LOANS TAB -->
-<div id="tab-loans" class="tab-panel" style="display:none;">
+<!-- 7. TIMELINE TAB (SECTION G) -->
+<div id="tab-timeline" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Unified Employee Lifecycle Timeline</h2>
+        <div class="muted small">Chronological audit log of all organizational, employment, promotion, and attendance events</div>
+      </div>
+      <button class="btn-secondary small" id="btn-refresh-timeline"><i data-lucide="refresh-cw"></i> Refresh</button>
+    </div>
+    <div id="timeline-container" style="padding: 16px 0;">
+      <div class="empty">Loading timeline events...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 8. PERSONAL TAB -->
+<div id="tab-personal" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head"><h2>Personal Details &amp; Demographics</h2></div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 12px 0;">
+      <div><div class="muted small">Full Legal Name</div><div style="font-weight:600;" id="p-fullname">--</div></div>
+      <div><div class="muted small">Gender</div><div style="font-weight:600;" id="p-gender">--</div></div>
+      <div><div class="muted small">Date of Birth</div><div style="font-weight:600;" id="p-dob">--</div></div>
+      <div><div class="muted small">Blood Group</div><div style="font-weight:600;" id="p-blood">--</div></div>
+      <div><div class="muted small">Email Address</div><div style="font-weight:600;" id="p-email">--</div></div>
+      <div><div class="muted small">Phone Number</div><div style="font-weight:600;" id="p-phone">--</div></div>
+      <div><div class="muted small">Alternate Phone</div><div style="font-weight:600;" id="p-alt-phone">--</div></div>
+      <div style="grid-column: span 2;"><div class="muted small">Residential Address</div><div style="font-weight:600;" id="p-address">--</div></div>
+      <div><div class="muted small">City, State, Pincode</div><div style="font-weight:600;" id="p-citystate">--</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 9. ORGANIZATION TAB -->
+<div id="tab-org" class="tab-panel" style="display:none;">
   <div class="card glass" style="margin-bottom: 20px;">
+    <div class="card-head"><h2>Organization &amp; Job Architecture</h2></div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 12px 0;">
+      <div><div class="muted small">Employee Code</div><div style="font-weight:600;" id="org-code">--</div></div>
+      <div><div class="muted small">Department</div><div style="font-weight:600;" id="org-dept">--</div></div>
+      <div><div class="muted small">Designation</div><div style="font-weight:600;" id="org-desig">--</div></div>
+      <div><div class="muted small">Team / Sub-Unit</div><div style="font-weight:600;" id="org-team">--</div></div>
+      <div><div class="muted small">Job Level</div><div style="font-weight:600;" id="org-level">--</div></div>
+      <div><div class="muted small">Job Grade (Pay Band)</div><div style="font-weight:600;" id="org-grade">--</div></div>
+      <div><div class="muted small">Campus</div><div style="font-weight:600;" id="org-campus">--</div></div>
+      <div><div class="muted small">Cost Center</div><div style="font-weight:600;" id="org-cost-center">--</div></div>
+      <div><div class="muted small">Reporting Manager</div><div style="font-weight:600;" id="org-manager">--</div></div>
+    </div>
+  </div>
+
+  <div class="card glass">
+    <div class="card-head"><h2>Employment Terms &amp; Confirmation</h2></div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 12px 0;">
+      <div><div class="muted small">Employment Type</div><div style="font-weight:600;" id="org-type">--</div></div>
+      <div><div class="muted small">Employment Status</div><div style="font-weight:600;" id="org-status">--</div></div>
+      <div><div class="muted small">Joining Date</div><div style="font-weight:600;" id="org-joining">--</div></div>
+      <div><div class="muted small">Confirmation Date</div><div style="font-weight:600;" id="org-confirmation">--</div></div>
+      <div><div class="muted small">Probation End Date</div><div style="font-weight:600;" id="org-probation">--</div></div>
+      <div><div class="muted small">Notice Period</div><div style="font-weight:600;" id="org-notice">--</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 10. LIFECYCLE HISTORY TAB -->
+<div id="tab-history" class="tab-panel" style="display:none;">
+  <!-- Department History -->
+  <div class="card glass" style="margin-bottom: 20px;">
+    <div class="card-head">
+      <h2>Department Transfer History</h2>
+      <button class="btn-primary small" onclick="document.getElementById('btn-open-transfer').click()"><i data-lucide="plus"></i> New Transfer</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Effective Date</th>
+            <th>Previous Department</th>
+            <th>New Department</th>
+            <th>Reason</th>
+            <th>Approved / Changed By</th>
+          </tr>
+        </thead>
+        <tbody id="hist-dept-tbody">
+          <tr><td colspan="5" class="empty">Loading department history...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Designation History -->
+  <div class="card glass" style="margin-bottom: 20px;">
+    <div class="card-head">
+      <h2>Designation Change History</h2>
+      <button class="btn-primary small" onclick="document.getElementById('btn-open-desig').click()"><i data-lucide="plus"></i> Change Designation</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Effective Date</th>
+            <th>Previous Designation</th>
+            <th>New Designation</th>
+            <th>Reason</th>
+            <th>Changed By</th>
+          </tr>
+        </thead>
+        <tbody id="hist-desig-tbody">
+          <tr><td colspan="5" class="empty">Loading designation history...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Promotions History -->
+  <div class="card glass">
+    <div class="card-head">
+      <h2>Promotions &amp; Advancements</h2>
+      <button class="btn-primary small" onclick="document.getElementById('btn-open-promotion').click()"><i data-lucide="plus"></i> Record Promotion</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Effective Date</th>
+            <th>Designation Progression</th>
+            <th>Grade Progression</th>
+            <th>Salary Revision</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="hist-promo-tbody">
+          <tr><td colspan="5" class="empty">Loading promotions...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 11. DEPENDENTS & FAMILY TAB -->
+<div id="tab-family" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Family &amp; Dependents</h2>
+        <div class="muted small">Spouse, children, and dependent family records for insurance &amp; benefits</div>
+      </div>
+      <button class="btn-primary small" id="btn-add-dependent"><i data-lucide="plus"></i> Add Dependent</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Relationship</th>
+            <th>Date of Birth</th>
+            <th>Gender</th>
+            <th>Dependent?</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="dependents-tbody">
+          <tr><td colspan="6" class="empty">Loading dependents...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 12. EMERGENCY CONTACTS TAB -->
+<div id="tab-emergency" class="tab-panel" style="display:none;">
+  <div class="card glass">
+    <div class="card-head">
+      <div>
+        <h2>Emergency Contacts Directory</h2>
+        <div class="muted small">Primary and secondary emergency contacts with addresses and relationships</div>
+      </div>
+      <button class="btn-primary small" id="btn-add-emergency-contact"><i data-lucide="plus"></i> Add Contact</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Contact Name</th>
+            <th>Relationship</th>
+            <th>Primary Phone</th>
+            <th>Secondary Phone</th>
+            <th>Email</th>
+            <th>Primary Flag</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="emergency-tbody">
+          <tr><td colspan="7" class="empty">Loading emergency contacts...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 13. LOANS TAB -->
+<div id="tab-loans" class="tab-panel" style="display:none;">
+  <div class="card glass">
     <div class="card-head">
       <h2>Active Employee Loans</h2>
       <button class="btn-primary small" id="btn-create-loan"><i data-lucide="plus"></i> Issue Loan</button>
@@ -239,44 +708,343 @@
   </div>
 </div>
 
-<!-- 8. PAYSLIPS TAB -->
-<div id="tab-payslips" class="tab-panel" style="display:none;">
-  <div class="card glass">
-    <div class="card-head"><h2>Generated Payslips</h2></div>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Period</th>
-            <th>Gross Earnings</th>
-            <th>Total Deductions</th>
-            <th>Net Salary</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="payslips-tbody">
-          <tr><td colspan="5" class="empty">No payslips generated yet</td></tr>
-        </tbody>
-      </table>
+<!-- 14. DIGITAL ID BADGE TAB -->
+<div id="tab-id-badge" class="tab-panel" style="display:none;">
+  <div style="display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;">
+    <!-- Printable ID Card Visual Container -->
+    <div class="card glass" id="id-card-printable" style="width: 320px; background: #0f172a; color: white; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); text-align: center; padding: 0;">
+      <!-- Card Header Stripe -->
+      <div style="background: linear-gradient(135deg, #4f46e5, #06b6d4); padding: 18px 16px 14px; text-align: center;">
+        <div style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.9; font-weight: 700;">{{ current_school.name if current_school else 'AttendanceOS' }}</div>
+        <div style="font-size: 0.7rem; opacity: 0.75;">OFFICIAL STAFF IDENTITY CARD</div>
+      </div>
+      <!-- Card Portrait Avatar -->
+      <div style="padding: 16px 20px 8px; display: flex; flex-direction: column; align-items: center;">
+        <div style="width: 80px; height: 80px; border-radius: 50%; background: #3b82f6; border: 3px solid white; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; margin-top: -30px; box-shadow: 0 4px 10px rgba(0,0,0,0.25);" id="card-avatar">
+          E
+        </div>
+        <h3 id="card-name" style="margin: 10px 0 2px; font-size: 1.15rem; font-weight: 700; color: #f8fafc;">--</h3>
+        <div id="card-desig" style="color: #38bdf8; font-size: 0.88rem; font-weight: 600;">--</div>
+        <div id="card-dept" style="color: #94a3b8; font-size: 0.8rem; margin-top: 2px;">--</div>
+      </div>
+      <!-- Card Details Table -->
+      <div style="padding: 10px 20px; text-align: left; font-size: 0.82rem; border-top: 1px solid rgba(255,255,255,0.08); border-bottom: 1px solid rgba(255,255,255,0.08); margin: 0 12px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span style="color: #94a3b8;">Emp Code:</span> <strong id="card-code" style="color: #f1f5f9;">--</strong></div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span style="color: #94a3b8;">Campus:</span> <span id="card-campus" style="color: #f1f5f9;">Main</span></div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;"><span style="color: #94a3b8;">Emergency:</span> <span id="card-emg-phone" style="color: #f1f5f9;">--</span></div>
+      </div>
+      <!-- Card Secure QR Section -->
+      <div style="padding: 14px 20px 18px; display: flex; flex-direction: column; align-items: center;">
+        <div id="card-qr-box" style="background: white; padding: 6px; border-radius: 8px; width: 110px; height: 110px; display: flex; align-items: center; justify-content: center;">
+          <img id="card-qr-img" src="" alt="Verification QR" style="width: 100px; height: 100px;" />
+        </div>
+        <div style="font-size: 0.65rem; color: #94a3b8; margin-top: 6px; font-family: monospace;" id="card-qr-text">EOS-QR-...</div>
+        <div style="font-size: 0.68rem; color: #22c55e; margin-top: 2px; display: flex; align-items: center; gap: 4px;">
+          <i data-lucide="shield-check" style="width: 12px; height: 12px;"></i> Secure Public Verification
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions & Verification Details -->
+    <div class="card glass" style="flex: 1; min-width: 280px;">
+      <div class="card-head">
+        <h2>Identity Card &amp; QR Credentials</h2>
+      </div>
+      <p class="muted small" style="margin-top: 4px;">
+        This digital identity badge features a tamper-evident public verification token. Scanning this QR code from any smartphone redirects to the secure verification endpoint showing verified credentials without exposing confidential banking or salary data.
+      </p>
+      <div style="margin: 16px 0; padding: 12px 16px; background: rgba(255,255,255,0.04); border-radius: var(--radius-md); border: 1px solid var(--border);">
+        <div class="muted small">Public Verification Endpoint:</div>
+        <div id="card-verify-url" style="font-family: monospace; font-size: 0.85rem; color: var(--accent); margin-top: 4px; word-break: break-all;">--</div>
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button class="btn-primary" type="button" onclick="window.print()">
+          <i data-lucide="printer"></i> Print ID Badge
+        </button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ============== Apply Leave Modal ============== -->
+<!-- ================= ACTION MODALS ================= -->
+
+<!-- 1. Transfer Department Modal -->
+<div id="transfer-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Transfer Employee Department</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="transfer-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Current Department</label>
+          <input type="text" id="trans-current-dept" class="input-text" readonly disabled />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">New Department *</label>
+          <select id="trans-new-dept-id" class="input-select" required></select>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Effective Date *</label>
+          <input type="date" id="trans-effective-date" class="input-text" required />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Reason for Transfer</label>
+          <input type="text" id="trans-reason" class="input-text" placeholder="Internal reorganization, promotion, or faculty shift" />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Remarks / Notes</label>
+          <textarea id="trans-remarks" class="input-text" rows="2"></textarea>
+        </div>
+        <div id="transfer-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Execute Transfer</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 2. Change Designation Modal -->
+<div id="desig-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Change Employee Designation</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="desig-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Current Designation</label>
+          <input type="text" id="desig-current" class="input-text" readonly disabled />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">New Designation *</label>
+          <select id="desig-new-id" class="input-select" required></select>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Effective Date *</label>
+          <input type="date" id="desig-effective-date" class="input-text" required />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Reason</label>
+          <input type="text" id="desig-reason" class="input-text" placeholder="Promotion, reassignment, etc." />
+        </div>
+        <div id="desig-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Update Designation</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 3. Change Manager Modal -->
+<div id="manager-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Change Reporting Manager</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="manager-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Select New Manager</label>
+          <select id="mgr-new-id" class="input-select">
+            <option value="">No Direct Manager (Top Level)</option>
+          </select>
+        </div>
+        <div id="manager-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Manager</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 4. Promotion Modal -->
+<div id="promotion-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Record Employee Promotion</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="promotion-form">
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label class="small" style="font-weight:600;">New Designation *</label>
+            <select id="promo-desig-id" class="input-select" required></select>
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">New Job Grade</label>
+            <select id="promo-grade-id" class="input-select">
+              <option value="">Keep / No Grade Change</option>
+            </select>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label class="small" style="font-weight:600;">New Basic Salary (₹) *</label>
+            <input type="number" step="0.01" id="promo-new-salary" class="input-text" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Effective Date *</label>
+            <input type="date" id="promo-effective-date" class="input-text" required />
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Promotion Justification / Notes</label>
+          <textarea id="promo-notes" class="input-text" rows="2" placeholder="Merit performance, annual appraisal cycle..."></textarea>
+        </div>
+        <div id="promo-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Record Promotion</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 5. Status / Exit Modal -->
+<div id="status-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Change Status / Record Employee Exit</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="status-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">New Status *</label>
+          <select id="status-select" class="input-select" required>
+            <option value="active">Active</option>
+            <option value="on_leave">On Leave</option>
+            <option value="suspended">Suspended</option>
+            <option value="resigned">Resigned</option>
+            <option value="terminated">Terminated</option>
+            <option value="retired">Retired</option>
+            <option value="deceased">Deceased</option>
+          </select>
+        </div>
+        <div id="exit-fields-box" style="display: none; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <div>
+              <label class="small" style="font-weight:600;">Exit / Resignation Date</label>
+              <input type="date" id="status-exit-date" class="input-text" />
+            </div>
+            <div>
+              <label class="small" style="font-weight:600;">Exit Type</label>
+              <select id="status-exit-type" class="input-select">
+                <option value="voluntary">Voluntary Resignation</option>
+                <option value="involuntary">Termination / Involuntary</option>
+                <option value="retirement">Retirement</option>
+                <option value="contract_end">Contract Completion</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom: 12px;">
+            <label class="small" style="font-weight:600;">Exit Reason &amp; Handover Notes</label>
+            <textarea id="status-exit-reason" class="input-text" rows="2"></textarea>
+          </div>
+        </div>
+        <div id="status-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Update Status</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 6. Upload Document Modal (SECTION F) -->
+<div id="upload-doc-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Upload Employee Document</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="upload-doc-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Document Title *</label>
+          <input type="text" id="doc-title" class="input-text" placeholder="e.g. Appointment Letter, Degree Certificate, ID Proof" required />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Document Type *</label>
+          <select id="doc-type" class="input-select" required>
+            <option value="appointment_letter">Appointment Letter</option>
+            <option value="identity_document">Identity Document (Aadhaar/Passport/PAN)</option>
+            <option value="qualification">Qualification / Degree Certificate</option>
+            <option value="employment_agreement">Employment Agreement / Contract</option>
+            <option value="experience_letter">Experience / Relieving Letter</option>
+            <option value="other">Other HR Document</option>
+          </select>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Select File (PDF, DOCX, PNG, JPG) *</label>
+          <input type="file" id="doc-file" class="input-text" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" required />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Notes / Remarks</label>
+          <textarea id="doc-notes" class="input-text" rows="2" placeholder="Optional notes about this document"></textarea>
+        </div>
+        <div id="doc-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary"><i data-lucide="upload"></i> Upload &amp; Save</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 7. Payslip Preview Modal (SECTION E) -->
+<div id="payslip-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document" style="max-width: 650px; width: 95%;">
+    <header class="modal-head">
+      <h3>Monthly Salary Slip</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <div class="modal-body" id="payslip-modal-body" style="padding: 20px; font-family: inherit;">
+      <div class="empty">Loading payslip...</div>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn-secondary" data-close="1" type="button">Close</button>
+      <button class="btn-primary" type="button" onclick="window.print()"><i data-lucide="printer"></i> Print Payslip</button>
+    </footer>
+  </div>
+</div>
+
+<!-- 8. Apply Leave Modal -->
 <div id="leave-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
   <div class="modal-panel" role="document">
     <header class="modal-head">
-      <h3>Request Leave</h3>
+      <h3>Submit Leave Request</h3>
       <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
     </header>
     <form id="leave-form">
       <div class="modal-body">
         <div style="margin-bottom: 12px;">
           <label class="small" style="font-weight:600;">Leave Type *</label>
-          <select id="leave-type-select" required></select>
+          <select id="leave-type-select" class="input-select" required></select>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
           <div>
             <label class="small" style="font-weight:600;">Start Date *</label>
             <input type="date" id="leave-start-date" class="input-text" required />
@@ -287,10 +1055,9 @@
           </div>
         </div>
         <div style="margin-bottom: 12px;">
-          <label class="small" style="font-weight:600;">Reason</label>
-          <input type="text" id="leave-reason" class="input-text" placeholder="Reason for leave..." />
+          <label class="small" style="font-weight:600;">Reason for Leave *</label>
+          <textarea id="leave-reason" class="input-text" rows="2" required placeholder="Medical, personal, family event..."></textarea>
         </div>
-        <div id="leave-modal-error" class="danger small" hidden></div>
       </div>
       <footer class="modal-foot">
         <button class="btn-secondary" data-close="1" type="button">Cancel</button>
@@ -300,7 +1067,7 @@
   </div>
 </div>
 
-<!-- ============== Configure Salary Modal ============== -->
+<!-- 9. Configure Salary Modal -->
 <div id="salary-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
   <div class="modal-panel" role="document">
@@ -310,31 +1077,30 @@
     </header>
     <form id="salary-form">
       <div class="modal-body">
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
           <div>
-            <label class="small" style="font-weight:600;">Basic Salary (Monthly) *</label>
-            <input type="number" step="0.01" id="sal-input-basic" class="input-text" placeholder="25000.00" required />
+            <label class="small" style="font-weight:600;">Basic Salary (₹/month) *</label>
+            <input type="number" step="0.01" id="sal-input-basic" class="input-text" required />
           </div>
           <div>
-            <label class="small" style="font-weight:600;">Effective From Date *</label>
+            <label class="small" style="font-weight:600;">Effective From *</label>
             <input type="date" id="sal-input-effective-from" class="input-text" required />
           </div>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
           <div>
-            <label class="small" style="font-weight:600;">Overtime Hourly Rate</label>
-            <input type="number" step="0.01" id="sal-input-ot-rate" class="input-text" placeholder="150.00" />
+            <label class="small" style="font-weight:600;">Overtime Hourly Rate (₹)</label>
+            <input type="number" step="0.01" id="sal-input-ot-rate" class="input-text" value="0.00" />
           </div>
           <div>
             <label class="small" style="font-weight:600;">Pay Frequency</label>
-            <select id="sal-input-freq">
-              <option value="monthly">Monthly</option>
-              <option value="bi-weekly">Bi-Weekly</option>
-              <option value="weekly">Weekly</option>
+            <select id="sal-input-freq" class="input-select">
+              <option value="Monthly">Monthly</option>
+              <option value="Bi-Weekly">Bi-Weekly</option>
+              <option value="Weekly">Weekly</option>
             </select>
           </div>
         </div>
-        <div id="salary-modal-error" class="danger small" hidden></div>
       </div>
       <footer class="modal-foot">
         <button class="btn-secondary" data-close="1" type="button">Cancel</button>
@@ -344,59 +1110,16 @@
   </div>
 </div>
 
-<!-- ============== Issue Loan Modal ============== -->
-<div id="loan-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
-  <div class="modal-backdrop" data-close="1"></div>
-  <div class="modal-panel" role="document">
-    <header class="modal-head">
-      <h3>Issue Employee Loan / Advance</h3>
-      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
-    </header>
-    <form id="loan-form">
-      <div class="modal-body">
-        <div style="margin-bottom: 12px;">
-          <label class="small" style="font-weight:600;">Loan Type *</label>
-          <select id="loan-type-select">
-            <option value="salary_advance">Salary Advance</option>
-            <option value="personal_loan">Personal Loan</option>
-            <option value="emergency_loan">Emergency Loan</option>
-          </select>
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-          <div>
-            <label class="small" style="font-weight:600;">Principal Amount *</label>
-            <input type="number" step="0.01" id="loan-amount" class="input-text" placeholder="10000.00" required />
-          </div>
-          <div>
-            <label class="small" style="font-weight:600;">Monthly Installment *</label>
-            <input type="number" step="0.01" id="loan-installment" class="input-text" placeholder="2000.00" required />
-          </div>
-        </div>
-        <div style="margin-bottom: 12px;">
-          <label class="small" style="font-weight:600;">Start Date *</label>
-          <input type="date" id="loan-start-date" class="input-text" required />
-        </div>
-        <div id="loan-modal-error" class="danger small" hidden></div>
-      </div>
-      <footer class="modal-foot">
-        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
-        <button type="submit" class="btn-primary">Issue Loan</button>
-      </footer>
-    </form>
-  </div>
-</div>
-
-<!-- ============== Edit Employee Modal ============== -->
+<!-- 10. Edit Employee Modal -->
 <div id="edit-emp-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
   <div class="modal-backdrop" data-close="1"></div>
-  <div class="modal-panel" role="document" style="max-width: 820px; width: 92%;">
+  <div class="modal-panel" role="document" style="max-width: 860px; width: 94%;">
     <header class="modal-head">
       <h3 id="edit-emp-title">Edit Employee</h3>
       <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
     </header>
     <form id="edit-emp-form">
       <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding-right: 8px;">
-        <!-- 1. Personal Information -->
         <div class="hr-section-header">
           <i data-lucide="user"></i><span>1. Personal Information</span>
         </div>
@@ -438,7 +1161,7 @@
             <input type="tel" id="ee-alt-phone" class="input-text" />
           </div>
         </div>
-        <div class="hr-form-grid" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
+        <div class="hr-form-grid" style="grid-template-columns: 2fr 1fr 1fr 1fr; margin-top: 10px;">
           <div>
             <label class="small" style="font-weight:600;">Street Address</label>
             <input type="text" id="ee-address" class="input-text" />
@@ -457,170 +1180,562 @@
           </div>
         </div>
 
-        <!-- 2. Employment Information -->
-        <div class="hr-section-header">
-          <i data-lucide="briefcase"></i><span>2. Employment Information</span>
+        <div class="hr-section-header" style="margin-top: 20px;">
+          <i data-lucide="briefcase"></i><span>2. Employment &amp; Position</span>
         </div>
         <div class="hr-form-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div>
             <label class="small" style="font-weight:600;">Department *</label>
-            <select id="ee-department-id" required></select>
+            <select id="ee-department" required></select>
           </div>
           <div>
             <label class="small" style="font-weight:600;">Designation *</label>
-            <select id="ee-designation-id" required></select>
+            <select id="ee-designation" required></select>
           </div>
           <div>
             <label class="small" style="font-weight:600;">Employment Type</label>
             <select id="ee-type">
-              <option value="full_time">Full Time</option>
-              <option value="part_time">Part Time</option>
+              <option value="full_time">Full-Time</option>
+              <option value="part_time">Part-Time</option>
               <option value="contract">Contract</option>
-              <option value="probation">Probation</option>
+              <option value="intern">Intern</option>
             </select>
           </div>
           <div>
-            <label class="small" style="font-weight:600;">Employment Status</label>
-            <select id="ee-status">
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="terminated">Terminated</option>
-              <option value="resigned">Resigned</option>
-            </select>
+            <label class="small" style="font-weight:600;">Campus</label>
+            <input type="text" id="ee-campus" class="input-text" value="Main Campus" />
           </div>
           <div>
-            <label class="small" style="font-weight:600;">Joining Date *</label>
-            <input type="date" id="ee-joining-date" class="input-text" required />
+            <label class="small" style="font-weight:600;">Probation End Date</label>
+            <input type="date" id="ee-probation-end-date" class="input-text" />
           </div>
           <div>
-            <label class="small" style="font-weight:600;">Confirmation Date</label>
-            <input type="date" id="ee-confirmation-date" class="input-text" />
+            <label class="small" style="font-weight:600;">Notice Period (Days)</label>
+            <input type="number" id="ee-notice-period" class="input-text" value="30" />
           </div>
         </div>
-
-        <!-- 3. Emergency Contact -->
-        <div class="hr-section-header">
-          <i data-lucide="phone-call"></i><span>3. Emergency Contact</span>
-        </div>
-        <div class="hr-form-grid" style="grid-template-columns: 1fr 1fr;">
-          <div>
-            <label class="small" style="font-weight:600;">Contact Name</label>
-            <input type="text" id="ee-emg-name" class="input-text" />
-          </div>
-          <div>
-            <label class="small" style="font-weight:600;">Contact Phone</label>
-            <input type="tel" id="ee-emg-phone" class="input-text" />
-          </div>
-        </div>
-
-        <div id="ee-modal-error" class="danger small" style="margin-top: 12px; padding: 10px 14px; background: #FDEDED; border: 1px solid #F8C5C5; border-radius: var(--radius-sm);" hidden></div>
+        <div id="ee-modal-error" class="danger small" style="margin-top:12px;" hidden></div>
       </div>
       <footer class="modal-foot">
         <button class="btn-secondary" data-close="1" type="button">Cancel</button>
-        <button type="submit" id="ee-submit-btn" class="btn-primary">Update Details</button>
+        <button type="submit" class="btn-primary">Save Changes</button>
       </footer>
     </form>
   </div>
 </div>
+
+<!-- 11. Add Dependent Modal -->
+<div id="dependent-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Family Dependent</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="dependent-form">
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Full Name *</label>
+            <input type="text" id="dep-name" class="input-text" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Relationship *</label>
+            <select id="dep-rel" class="input-select" required>
+              <option value="Spouse">Spouse</option>
+              <option value="Child">Child</option>
+              <option value="Parent">Parent</option>
+              <option value="Sibling">Sibling</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Date of Birth</label>
+            <input type="date" id="dep-dob" class="input-text" />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Gender</label>
+            <select id="dep-gender" class="input-select">
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="dep-is-dep" checked />
+            <span class="small" style="font-weight:600;">Qualifies as financial / insurance dependent</span>
+          </label>
+        </div>
+        <div id="dependent-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Add Dependent</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 12. Add Emergency Contact Modal -->
+<div id="emergency-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Add Emergency Contact</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="emergency-form">
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Contact Name *</label>
+            <input type="text" id="emg-name" class="input-text" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Relationship *</label>
+            <input type="text" id="emg-rel" class="input-text" placeholder="Spouse, Father, Friend..." required />
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Primary Phone *</label>
+            <input type="tel" id="emg-phone" class="input-text" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Secondary Phone</label>
+            <input type="tel" id="emg-phone-alt" class="input-text" />
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Email Address</label>
+          <input type="email" id="emg-email" class="input-text" />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="emg-is-primary" />
+            <span class="small" style="font-weight:600;">Set as Primary Emergency Contact</span>
+          </label>
+        </div>
+        <div id="emergency-modal-error" class="danger small" hidden></div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Save Contact</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- 13. Issue Loan Modal -->
+<div id="loan-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h3>Issue Employee Loan / Advance</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <form id="loan-form">
+      <div class="modal-body">
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Loan Type *</label>
+          <select id="loan-type-select" class="input-select" required>
+            <option value="salary_advance">Salary Advance</option>
+            <option value="emergency_loan">Emergency Loan</option>
+            <option value="education_loan">Education Assistance Loan</option>
+            <option value="housing_loan">Housing Loan</option>
+          </select>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label class="small" style="font-weight:600;">Principal Amount (₹) *</label>
+            <input type="number" step="0.01" id="loan-amount" class="input-text" required />
+          </div>
+          <div>
+            <label class="small" style="font-weight:600;">Monthly Installment (₹) *</label>
+            <input type="number" step="0.01" id="loan-installment" class="input-text" required />
+          </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label class="small" style="font-weight:600;">Start Date *</label>
+          <input type="date" id="loan-start-date" class="input-text" required />
+        </div>
+      </div>
+      <footer class="modal-foot">
+        <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+        <button type="submit" class="btn-primary">Issue Loan</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-const EMP_ID = {{ emp_id }};
-let currentEmpData = null;
-
 document.addEventListener("DOMContentLoaded", function() {
-  // Tab Switcher
+  let EMP_ID = {{ (emp_id or employee_id) | default(0) }};
+  if (!EMP_ID || EMP_ID === 0) {
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const lastPart = parts[parts.length - 1];
+    if (lastPart && !isNaN(parseInt(lastPart))) {
+      EMP_ID = parseInt(lastPart);
+    }
+  }
+  let currentEmpData = null;
+  let allDepartments = [];
+  let allDesignations = [];
+  let allEmployees = [];
+  let currentFilterMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+  // Initialize Month Picker to current month
+  const monthInput = document.getElementById("att-filter-month");
+  if (monthInput) monthInput.value = currentFilterMonth;
+
+  // Tab Switching
   document.querySelectorAll(".tab-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", function() {
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       document.querySelectorAll(".tab-panel").forEach(p => p.style.display = "none");
-      btn.classList.add("active");
-      const tabId = btn.dataset.tab;
-      document.getElementById(tabId).style.display = "block";
+      this.classList.add("active");
+      const target = document.getElementById(this.dataset.tab);
+      if (target) target.style.display = "block";
     });
   });
 
-  // Load Profile Main Data
-  async function loadProfile() {
-    try {
-      const emp = await window.j(`/api/hr/employees/${EMP_ID}`);
-      currentEmpData = emp;
-      document.getElementById("crumb-emp-name").textContent = emp.full_name;
-      document.getElementById("prof-name").textContent = emp.full_name;
-      document.getElementById("prof-code").textContent = emp.employee_code;
-      document.getElementById("prof-dept-desig").textContent = `${emp.department_name || 'No Dept'} • ${emp.designation_name || 'No Desig'}`;
-      document.getElementById("prof-avatar").textContent = (emp.first_name || 'E')[0].toUpperCase();
-      document.getElementById("prof-status-badge").innerHTML = `<span class="badge ${emp.employment_status === 'active' ? 'green' : 'red'}">${window.escapeHtml(emp.employment_status)}</span>`;
-
-      // Personal Tab
-      document.getElementById("p-fullname").textContent = emp.full_name;
-      document.getElementById("p-gender").textContent = emp.gender || '--';
-      document.getElementById("p-dob").textContent = emp.date_of_birth || '--';
-      document.getElementById("p-email").textContent = emp.email || '--';
-      document.getElementById("p-phone").textContent = emp.phone || '--';
-      document.getElementById("p-alt-phone").textContent = emp.alternate_phone || '--';
-      document.getElementById("p-address").textContent = [emp.address, emp.city, emp.state, emp.pincode].filter(Boolean).join(', ') || '--';
-      document.getElementById("p-emg-name").textContent = emp.emergency_contact_name || '--';
-      document.getElementById("p-emg-phone").textContent = emp.emergency_contact_phone || '--';
-
-      // Employment Tab
-      document.getElementById("e-code").textContent = emp.employee_code;
-      document.getElementById("e-dept").textContent = emp.department_name || '--';
-      document.getElementById("e-desig").textContent = emp.designation_name || '--';
-      document.getElementById("e-type").textContent = (emp.employment_type || '--').replace('_', ' ');
-      document.getElementById("e-status").textContent = emp.employment_status;
-      document.getElementById("e-joining").textContent = emp.joining_date || '--';
-      document.getElementById("e-confirmation").textContent = emp.confirmation_date || '--';
-      document.getElementById("e-manager").textContent = emp.reporting_manager_name || '--';
-      document.getElementById("e-teacher").innerHTML = emp.teacher_id ? 
-        `<span class="badge blue">Linked Teacher (ID: ${emp.teacher_id})</span>` : 
-        `<span class="badge gray">Non-Teaching Staff</span>`;
-    } catch (err) {
-      console.error("Error loading employee profile:", err);
+  function showProfileError(msg) {
+    const profName = document.getElementById("prof-name");
+    if (profName) {
+      profName.innerHTML = `<span style="color:var(--danger,#ef4444);display:inline-flex;align-items:center;gap:8px;"><i data-lucide="alert-circle"></i> Unable to load teacher profile</span> <button class="btn-secondary small" id="btn-retry-profile" style="margin-left:12px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;"><i data-lucide="refresh-cw"></i> Retry</button>`;
+      const retryBtn = document.getElementById("btn-retry-profile");
+      if (retryBtn) {
+        retryBtn.onclick = () => {
+          profName.textContent = "Loading Employee...";
+          load360Profile(currentFilterMonth);
+        };
+      }
+      if (window.lucide) window.lucide.createIcons();
     }
   }
 
-  // Load Leave Data
-  async function loadLeaves() {
+  // Load Metadata (departments, designations, managers)
+  async function loadMetadata() {
     try {
-      const balances = await window.j(`/api/hr/employees/${EMP_ID}/leave-balances`);
-      const balContainer = document.getElementById("leave-balances-container");
-      if (!balances || balances.length === 0) {
-        balContainer.innerHTML = '<div class="empty">No leave balances allocated for current year.</div>';
-      } else {
-        balContainer.innerHTML = balances.map(b => `
-          <div style="background:rgba(255,255,255,0.4); padding:16px; border-radius:var(--radius-md); border:1px solid var(--glass-border);">
-            <div class="muted small">${window.escapeHtml(b.leave_type_name)}</div>
-            <div style="font-size:20px; font-weight:700; margin:4px 0;">${b.remaining_days} / ${b.allocated_days} days</div>
-            <div class="muted small">${b.used_days} used &bull; ${b.pending_days} pending</div>
-          </div>
-        `).join('');
-      }
-
-      const leaves = await window.j(`/api/hr/leaves?employee_id=${EMP_ID}`);
-      const tbody = document.getElementById("leave-history-tbody");
-      if (!leaves || leaves.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty">No leave requests found.</td></tr>';
-      } else {
-        tbody.innerHTML = leaves.map(l => `
-          <tr>
-            <td><strong>${window.escapeHtml(l.leave_type_name || 'Leave')}</strong></td>
-            <td>${l.start_date}</td>
-            <td>${l.end_date}</td>
-            <td>${l.total_days} days</td>
-            <td>${window.escapeHtml(l.reason || '')}</td>
-            <td><span class="badge ${l.status === 'approved' ? 'green' : (l.status === 'rejected' ? 'red' : 'yellow')}">${window.escapeHtml(l.status)}</span></td>
-          </tr>
-        `).join('');
-      }
-    } catch (e) { console.error("Error loading leave tab:", e); }
+      const [depts, desigs, emps] = await Promise.all([
+        window.j("/api/hr/departments"),
+        window.j("/api/hr/designations"),
+        window.j("/api/hr/employees")
+      ]);
+      allDepartments = depts || [];
+      allDesignations = desigs || [];
+      allEmployees = (emps || []).filter(e => e.id !== EMP_ID);
+    } catch (e) {
+      console.warn("Could not load some HR metadata:", e);
+    }
   }
 
-  // Load Salary Data
-  async function loadSalary() {
+  // Load Main 360° Profile API
+  async function load360Profile(month, startDate, endDate) {
+    if (!EMP_ID || EMP_ID === 0) {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      const lastPart = parts[parts.length - 1];
+      if (lastPart && !isNaN(parseInt(lastPart))) {
+        EMP_ID = parseInt(lastPart);
+      }
+    }
+    if (!EMP_ID) {
+      showProfileError("No employee or teacher ID specified");
+      return;
+    }
+
+    let url = `/api/hr/employees/${EMP_ID}/360-profile`;
+    const params = [];
+    if (month) params.push(`month=${encodeURIComponent(month)}`);
+    if (startDate) params.push(`start_date=${encodeURIComponent(startDate)}`);
+    if (endDate) params.push(`end_date=${encodeURIComponent(endDate)}`);
+    if (params.length > 0) url += `?${params.join('&')}`;
+
     try {
-      const ss = await window.j(`/api/hr/employees/${EMP_ID}/salary-structure`);
+      const res = await window.j(url);
+      if (!res || !res.overview) {
+        showProfileError(res && res.error ? res.error : "Profile not found");
+        return;
+      }
+      currentEmpData = res.overview;
+
+      // 1. Header & Overview
+      renderHeaderAndOverview(res.overview);
+
+      // 2. Attendance Summary & History
+      renderAttendanceSection(res.attendance_summary, res.attendance_history);
+
+      // 3. Late Arrival Intelligence
+      renderLateIntelligence(res.late_intelligence);
+
+      // 4. Holidays & Leaves
+      renderHolidaysAndLeaves(res.holidays_and_leaves);
+
+      // 5. Salary & Payroll History
+      renderSalaryAndPayroll(res.salary_and_payroll);
+
+      // 6. Documents
+      renderDocuments(res.documents);
+
+      // 7. Timeline
+      renderTimeline(res.timeline);
+
+      // 8. Demographics & Org Details
+      renderDemographicsAndOrg(res.overview);
+
+      if (window.lucide) window.lucide.createIcons();
+    } catch (err) {
+      console.error("Error loading 360 profile:", err);
+      showProfileError(err.message || "Failed to load profile");
+    }
+  }
+
+  // Render Header & Overview
+  function renderHeaderAndOverview(ov) {
+    document.getElementById("prof-name").textContent = ov.full_name || "Employee";
+    document.getElementById("crumb-emp-name").textContent = ov.full_name || "360° Profile";
+    document.getElementById("prof-code").textContent = ov.employee_code || `--`;
+
+    const statusBadge = document.getElementById("prof-status-badge");
+    const st = (ov.employment_status || "active").toLowerCase();
+    const stClass = st === "active" ? "badge green" : (st === "on_leave" ? "badge blue" : "badge gray");
+    statusBadge.className = stClass;
+    statusBadge.textContent = (ov.employment_status || "ACTIVE").toUpperCase();
+
+    const dot = document.getElementById("prof-avatar-dot");
+    dot.style.background = st === "active" ? "#22c55e" : (st === "on_leave" ? "#3b82f6" : "#94a3b8");
+
+    const teacherBadge = document.getElementById("prof-teacher-badge");
+    if (ov.is_teacher) {
+      teacherBadge.className = "badge blue";
+      teacherBadge.innerHTML = `<i data-lucide="presentation" style="width:12px;height:12px;"></i> Teaching Faculty`;
+    } else {
+      teacherBadge.className = "badge gray";
+      teacherBadge.textContent = "Staff";
+    }
+
+    // Avatar image or initial
+    const avatarSpan = document.getElementById("prof-avatar");
+    const avatarImg = document.getElementById("prof-avatar-img");
+    if (ov.profile_image) {
+      avatarImg.src = ov.profile_image.startsWith('/') || ov.profile_image.startsWith('http') ? ov.profile_image : `/static/${ov.profile_image}`;
+      avatarImg.style.display = "block";
+      avatarSpan.style.display = "none";
+    } else {
+      avatarSpan.textContent = (ov.full_name || "E")[0].toUpperCase();
+      avatarSpan.style.display = "inline";
+      avatarImg.style.display = "none";
+    }
+
+    const deptName = ov.department_name || "General";
+    const desigName = ov.designation_name || "Staff";
+    document.getElementById("prof-dept-desig").textContent = `${deptName} — ${desigName}`;
+    document.getElementById("prof-campus-team").textContent = `Campus: ${ov.campus || 'Main'}`;
+    document.getElementById("prof-joining-span").textContent = `Joined: ${ov.joining_date || '--'}`;
+    document.getElementById("prof-shift-span").textContent = `Shift: ${ov.assigned_shift || '08:00 - 14:00'}`;
+
+    // Overview Tab fields
+    document.getElementById("ov-dept").textContent = deptName;
+    document.getElementById("ov-desig").textContent = desigName;
+    document.getElementById("ov-type").textContent = (ov.employment_type || "Full Time").replace("_", " ").toUpperCase();
+    document.getElementById("ov-level-grade").textContent = `${ov.job_level_name || 'Standard'} / ${ov.job_grade_name || 'Grade 1'}`;
+    document.getElementById("ov-campus-cc").textContent = `${ov.campus || 'Main Campus'} / ${ov.cost_center_code || 'General'}`;
+    document.getElementById("ov-tenure").textContent = ov.joining_date ? calculateTenure(ov.joining_date) : '--';
+    document.getElementById("ov-shift").textContent = ov.assigned_shift || '08:00 - 14:00';
+    document.getElementById("ov-salary").textContent = "₹" + (ov.monthly_salary || 0).toLocaleString('en-IN', {minimumFractionDigits: 2});
+    document.getElementById("ov-ctc").textContent = "₹" + ((ov.monthly_salary || 0) * 12).toLocaleString('en-IN', {minimumFractionDigits: 2});
+
+    // Contacts
+    document.getElementById("ov-email").textContent = ov.email || "--";
+    document.getElementById("ov-phone").textContent = ov.phone || "--";
+    document.getElementById("ov-emg").textContent = ov.emergency_contact_phone || "--";
+
+    // Manager
+    if (ov.reporting_manager) {
+      document.getElementById("ov-manager-name").textContent = ov.reporting_manager.full_name;
+      document.getElementById("ov-manager-title").textContent = ov.reporting_manager.designation || "Manager";
+      document.getElementById("ov-mgr-avatar").textContent = (ov.reporting_manager.full_name || "M")[0].toUpperCase();
+    } else {
+      document.getElementById("ov-manager-name").textContent = "No Direct Manager";
+      document.getElementById("ov-manager-title").textContent = "Top-level leadership";
+      document.getElementById("ov-mgr-avatar").textContent = "-";
+    }
+  }
+
+  function calculateTenure(joiningDateStr) {
+    try {
+      const join = new Date(joiningDateStr);
+      const now = new Date();
+      let months = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+      if (months < 1) return "< 1 month";
+      const years = Math.floor(months / 12);
+      const remMonths = months % 12;
+      return years > 0 ? `${years}y ${remMonths}m` : `${remMonths} months`;
+    } catch { return "--"; }
+  }
+
+  // Render Attendance Section (8 KPIs + Daily Grid)
+  function renderAttendanceSection(summary, history) {
+    if (!summary) summary = {};
+    document.getElementById("kpi-present-days").textContent = summary.total_present_days ?? 0;
+    document.getElementById("kpi-absent-days").textContent = summary.total_absent_days ?? 0;
+    document.getElementById("kpi-late-count").textContent = summary.total_late_arrivals ?? 0;
+    document.getElementById("kpi-late-minutes").textContent = (summary.total_late_minutes ?? 0) + "m";
+    document.getElementById("kpi-leave-days").textContent = summary.total_approved_leave_days ?? 0;
+    document.getElementById("kpi-holidays").textContent = summary.total_holidays ?? 0;
+    document.getElementById("kpi-half-days").textContent = summary.total_half_days ?? 0;
+    document.getElementById("kpi-attendance-pct").textContent = (summary.attendance_percentage ?? 100) + "%";
+
+    const rangeLabel = document.getElementById("att-range-label");
+    if (rangeLabel && summary.range_start && summary.range_end) {
+      rangeLabel.textContent = `Viewing: ${summary.range_start} to ${summary.range_end}`;
+    }
+
+    const tbody = document.getElementById("att-history-tbody");
+    if (!history || history.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty">No attendance records found for this period.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = history.map(r => {
+      let stBadge = `<span class="badge green">Present</span>`;
+      if (r.status === "absent") stBadge = `<span class="badge red">Absent</span>`;
+      else if (r.status === "late") stBadge = `<span class="badge yellow">Late</span>`;
+      else if (r.status === "half_day") stBadge = `<span class="badge blue">Half-Day</span>`;
+      else if (r.status === "holiday") stBadge = `<span class="badge purple">Holiday</span>`;
+      else if (r.status === "on_leave") stBadge = `<span class="badge gray">On Leave</span>`;
+
+      const lateDelayBadge = r.late_minutes > 0 
+        ? `<span class="badge yellow">+${r.late_minutes} min late</span>` 
+        : `<span class="muted small">On-Time</span>`;
+
+      const earlyBadge = r.early_departure 
+        ? `<span class="badge red">Early Exit</span>` 
+        : `<span class="muted small">No</span>`;
+
+      const punchBadge = r.missing_punch 
+        ? `<span class="badge red" title="Missing In or Out Punch"><i data-lucide="alert-triangle"></i> Incomplete</span>` 
+        : `<span class="badge green"><i data-lucide="check"></i> Valid</span>`;
+
+      return `
+        <tr>
+          <td><strong>${r.date}</strong></td>
+          <td><span class="muted small">${r.scheduled_shift || '08:00 - 14:00'}</span></td>
+          <td><strong>${r.check_in || '--'}</strong></td>
+          <td><strong>${r.check_out || '--'}</strong></td>
+          <td>${stBadge}</td>
+          <td><strong>${r.total_working_hours ? r.total_working_hours + ' hrs' : '--'}</strong></td>
+          <td>${lateDelayBadge}</td>
+          <td>${earlyBadge}</td>
+          <td>${r.half_day ? '<span class="badge blue">Yes</span>' : '<span class="muted small">No</span>'}</td>
+          <td>${punchBadge}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Render Late Intelligence Section
+  function renderLateIntelligence(lateIntel) {
+    if (!lateIntel) lateIntel = { monthly_late_count: 0, total_accumulated_late_minutes: 0, policy_grace_minutes: 15, records: [] };
+    document.getElementById("late-intel-count").textContent = lateIntel.monthly_late_count ?? 0;
+    document.getElementById("late-intel-minutes").textContent = (lateIntel.total_accumulated_late_minutes ?? 0) + " mins";
+    document.getElementById("late-intel-grace").textContent = (lateIntel.policy_grace_minutes ?? 15) + " mins";
+
+    const tbody = document.getElementById("late-intel-tbody");
+    const records = lateIntel.records || [];
+    if (records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">No late arrivals recorded for this period. Excellent punctuality!</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = records.map(rec => `
+      <tr>
+        <td><strong>${rec.date}</strong></td>
+        <td>${rec.scheduled_arrival || '08:00 AM'}</td>
+        <td><strong style="color: #f59e0b;">${rec.actual_arrival || '--'}</strong></td>
+        <td><span class="badge yellow">+${rec.delay_minutes || 0} mins</span></td>
+        <td><span class="badge ${rec.delay_minutes <= (lateIntel.policy_grace_minutes || 15) ? 'blue' : 'yellow'}">${rec.status || 'Late Arrival'}</span></td>
+        <td>${window.escapeHtml(rec.notes || 'Recorded via biometric / camera check-in')}</td>
+      </tr>
+    `).join('');
+  }
+
+  // Render Holidays and Leaves
+  function renderHolidaysAndLeaves(data) {
+    if (!data) data = { leave_balances: [], leave_requests: [], holidays: [], weekly_offs: [] };
+
+    // Balances
+    const balContainer = document.getElementById("leave-balances-container");
+    if (!data.leave_balances || data.leave_balances.length === 0) {
+      balContainer.innerHTML = '<div class="empty">No leave balance quotas assigned for current academic year.</div>';
+    } else {
+      balContainer.innerHTML = data.leave_balances.map(b => `
+        <div style="background:rgba(255,255,255,0.04); padding:16px; border-radius:var(--radius-md); border:1px solid var(--border);">
+          <div class="muted small" style="font-weight:600;">${window.escapeHtml(b.leave_type_name)}</div>
+          <div style="font-size:20px; font-weight:700; margin:4px 0; color:var(--accent);">${b.remaining_days} / ${b.allocated_days} days</div>
+          <div class="muted small">${b.used_days} used &bull; ${b.pending_days} pending</div>
+        </div>
+      `).join('');
+    }
+
+    // Leave Requests History
+    const leaveTbody = document.getElementById("leave-history-tbody");
+    if (!data.leave_requests || data.leave_requests.length === 0) {
+      leaveTbody.innerHTML = '<tr><td colspan="6" class="empty">No leave requests found.</td></tr>';
+    } else {
+      leaveTbody.innerHTML = data.leave_requests.map(l => `
+        <tr>
+          <td><strong>${window.escapeHtml(l.leave_type_name || 'Leave')}</strong></td>
+          <td>${l.start_date}</td>
+          <td>${l.end_date}</td>
+          <td><strong>${l.total_days} days</strong></td>
+          <td>${window.escapeHtml(l.reason || '')}</td>
+          <td><span class="badge ${l.status === 'approved' ? 'green' : (l.status === 'rejected' ? 'red' : 'yellow')}">${(l.status || 'pending').toUpperCase()}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    // Holidays & Weekly Offs
+    const holTbody = document.getElementById("holidays-history-tbody");
+    const hols = data.holidays || [];
+    const offs = data.weekly_offs || [];
+    if (hols.length === 0 && offs.length === 0) {
+      holTbody.innerHTML = '<tr><td colspan="4" class="empty">No scheduled school holidays or weekly offs configured.</td></tr>';
+    } else {
+      let rows = hols.map(h => `
+        <tr>
+          <td><strong>${h.date}</strong></td>
+          <td>${window.escapeHtml(h.name)}</td>
+          <td><span class="badge purple">${window.escapeHtml(h.type || 'Public Holiday')}</span></td>
+          <td><span class="badge green">Exempted from Working Days</span></td>
+        </tr>
+      `);
+      if (offs.length > 0) {
+        rows.push(`
+          <tr>
+            <td><strong>Recurring</strong></td>
+            <td>Weekly Off: ${offs.map(o => o.day_name).join(', ')}</td>
+            <td><span class="badge blue">Weekly Off</span></td>
+            <td><span class="badge green">Standard Non-Working Day</span></td>
+          </tr>
+        `);
+      }
+      holTbody.innerHTML = rows.join('');
+    }
+  }
+
+  // Render Salary & Payroll History
+  function renderSalaryAndPayroll(data) {
+    if (!data) data = { current_salary_structure: null, salary_revisions: [], payroll_records: [] };
+    const ss = data.current_salary_structure;
+    if (ss) {
       document.getElementById("sal-basic").textContent = "₹" + (ss.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2});
       document.getElementById("sal-gross").textContent = "₹" + (ss.gross_salary || ss.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2});
       document.getElementById("sal-ctc").textContent = "₹" + (ss.annual_ctc || ((ss.basic_salary || 0)*12)).toLocaleString('en-IN', {minimumFractionDigits:2});
@@ -628,11 +1743,11 @@ document.addEventListener("DOMContentLoaded", function() {
       document.getElementById("sal-freq").textContent = ss.pay_frequency || 'Monthly';
       document.getElementById("sal-effective-from").textContent = ss.effective_from || '--';
 
-      const tbody = document.getElementById("salary-components-tbody");
+      const compTbody = document.getElementById("salary-components-tbody");
       if (!ss.components || ss.components.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="empty">No extra components configured.</td></tr>';
+        compTbody.innerHTML = '<tr><td colspan="3" class="empty">No additional allowance/deduction components configured.</td></tr>';
       } else {
-        tbody.innerHTML = ss.components.map(c => `
+        compTbody.innerHTML = ss.components.map(c => `
           <tr>
             <td><strong>${window.escapeHtml(c.component_name || 'Component')}</strong></td>
             <td><span class="badge ${c.component_type === 'earning' ? 'green' : 'red'}">${window.escapeHtml(c.component_type || '')}</span></td>
@@ -640,59 +1755,568 @@ document.addEventListener("DOMContentLoaded", function() {
           </tr>
         `).join('');
       }
-    } catch (e) {
-      console.log("No salary structure configured yet for this employee.");
     }
 
-    try {
-      const history = await window.j(`/api/hr/employees/${EMP_ID}/salary-history`);
-      const histTbody = document.getElementById("salary-history-tbody");
-      if (!history || history.length === 0) {
-        histTbody.innerHTML = '<tr><td colspan="5" class="empty">No historical salary revisions.</td></tr>';
-      } else {
-        histTbody.innerHTML = history.map(h => `
-          <tr>
-            <td>${h.effective_from}</td>
-            <td>${h.effective_to || 'Current'}</td>
-            <td>₹${(h.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
-            <td>₹${(h.gross_salary || h.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
-            <td><span class="badge ${h.status === 'active' ? 'green' : 'gray'}">${h.status}</span></td>
-          </tr>
-        `).join('');
-      }
-    } catch (e) {
-      console.log("No salary history available.");
+    // Salary Revisions
+    const revTbody = document.getElementById("salary-history-tbody");
+    if (!data.salary_revisions || data.salary_revisions.length === 0) {
+      revTbody.innerHTML = '<tr><td colspan="5" class="empty">No historical salary revisions.</td></tr>';
+    } else {
+      revTbody.innerHTML = data.salary_revisions.map(h => `
+        <tr>
+          <td>${h.effective_from}</td>
+          <td>${h.effective_to || 'Current'}</td>
+          <td>₹${(h.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          <td>₹${(h.gross_salary || h.basic_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          <td><span class="badge ${h.status === 'active' ? 'green' : 'gray'}">${h.status}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    // Month-wise Payroll Records
+    const prTbody = document.getElementById("payroll-records-tbody");
+    if (!data.payroll_records || data.payroll_records.length === 0) {
+      prTbody.innerHTML = '<tr><td colspan="10" class="empty">No processed payroll records for this employee yet.</td></tr>';
+    } else {
+      prTbody.innerHTML = data.payroll_records.map(pr => `
+        <tr>
+          <td><strong>${pr.period || (pr.month + '/' + pr.year)}</strong></td>
+          <td>₹${(pr.gross_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          <td><strong>${pr.paid_days ?? '--'}</strong></td>
+          <td>${pr.unpaid_leave_days ?? 0}</td>
+          <td><span class="badge yellow">₹${(pr.attendance_deductions || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</span></td>
+          <td>₹${(pr.other_deductions || pr.total_deductions || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+          <td><strong style="color: #22c55e; font-size:1.05rem;">₹${(pr.net_payable_salary || pr.net_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</strong></td>
+          <td><span class="badge ${pr.status === 'paid' ? 'green' : (pr.status === 'finalized' ? 'blue' : 'yellow')}">${(pr.status || 'draft').toUpperCase()}</span></td>
+          <td>${pr.payment_date ? `${pr.payment_date} <br/><small class="muted">${pr.payment_reference || ''}</small>` : '<span class="muted">Pending</span>'}</td>
+          <td>
+            <button class="btn-secondary small btn-view-payslip" data-id="${pr.id}" type="button"><i data-lucide="file-text"></i> View Payslip</button>
+          </td>
+        </tr>
+      `).join('');
+
+      document.querySelectorAll(".btn-view-payslip").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const record = data.payroll_records.find(p => String(p.id) === String(btn.dataset.id));
+          if (record) openPayslipModal(record);
+        });
+      });
     }
   }
 
-  // Load Loans Data
-  async function loadLoans() {
-    try {
-      const loans = await window.j(`/api/hr/employees/${EMP_ID}/loans`);
-      const tbody = document.getElementById("loans-tbody");
-      if (!loans || loans.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty">No active loans for this employee.</td></tr>';
-      } else {
-        tbody.innerHTML = loans.map(l => `
-          <tr>
-            <td><strong>${window.escapeHtml(l.loan_type.replace('_', ' '))}</strong></td>
-            <td>₹${(l.principal_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
-            <td>₹${(l.remaining_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
-            <td>₹${(l.installment_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
-            <td>${l.start_date}</td>
-            <td><span class="badge ${l.status === 'active' ? 'blue' : 'green'}">${l.status}</span></td>
-          </tr>
-        `).join('');
-      }
-    } catch (e) { console.error("Error loading loans:", e); }
+  // Interactive Payslip Modal
+  function openPayslipModal(pr) {
+    const body = document.getElementById("payslip-modal-body");
+    const emp = currentEmpData || {};
+    body.innerHTML = `
+      <div style="border: 2px solid var(--border); border-radius: 12px; padding: 20px; background: rgba(255,255,255,0.02);">
+        <!-- Header -->
+        <div style="text-align: center; border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;">
+          <h2 style="margin: 0; font-size: 1.3rem;">{{ current_school.name if current_school else 'AttendanceOS' }}</h2>
+          <div class="muted small">Monthly Employee Salary &amp; Attendance Statement</div>
+          <div style="font-weight: 700; margin-top: 4px; font-size: 1.1rem; color: var(--accent);">Payslip for ${pr.period || (pr.month + '/' + pr.year)}</div>
+        </div>
+
+        <!-- Employee Info -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; font-size: 0.9rem;">
+          <div><span class="muted">Staff Name:</span> <strong>${emp.full_name || '--'}</strong></div>
+          <div><span class="muted">Staff ID:</span> <strong>${emp.employee_code || '--'}</strong></div>
+          <div><span class="muted">Department:</span> <strong>${emp.department_name || '--'}</strong></div>
+          <div><span class="muted">Designation:</span> <strong>${emp.designation_name || '--'}</strong></div>
+          <div><span class="muted">Paid Days:</span> <strong>${pr.paid_days ?? '--'}</strong></div>
+          <div><span class="muted">Unpaid Leaves:</span> <strong>${pr.unpaid_leave_days ?? 0}</strong></div>
+        </div>
+
+        <!-- Earnings and Deductions Table -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
+            <div style="font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 8px; color: #22c55e;">EARNINGS</div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Basic Salary:</span> <strong>₹${(pr.basic_salary || pr.gross_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</strong></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Allowances:</span> <strong>₹${(pr.allowances || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</strong></div>
+            <div style="border-top:1px dashed var(--border); margin-top:8px; padding-top:6px; display:flex; justify-content:space-between; font-weight:700;">
+              <span>Total Gross:</span> <span>₹${(pr.gross_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</span>
+            </div>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px;">
+            <div style="font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 8px; color: #ef4444;">DEDUCTIONS</div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Attendance / LOP:</span> <strong>₹${(pr.attendance_deductions || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</strong></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Taxes / Other:</span> <strong>₹${(pr.other_deductions || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</strong></div>
+            <div style="border-top:1px dashed var(--border); margin-top:8px; padding-top:6px; display:flex; justify-content:space-between; font-weight:700;">
+              <span>Total Deductions:</span> <span>₹${(pr.total_deductions || ((pr.attendance_deductions||0)+(pr.other_deductions||0))).toLocaleString('en-IN', {minimumFractionDigits:2})}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Net Payable Salary Banner -->
+        <div style="background: linear-gradient(135deg, rgba(34,197,94,0.15), rgba(59,130,246,0.15)); border: 1px solid #22c55e; border-radius: 8px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div class="muted small" style="font-weight: 600; text-transform: uppercase;">Net Take-Home Salary</div>
+            <div style="font-size: 0.8rem; color: #94a3b8;">Status: <strong>${(pr.status || 'processed').toUpperCase()}</strong> ${pr.payment_date ? '&bull; Paid on ' + pr.payment_date : ''}</div>
+          </div>
+          <div style="font-size: 1.6rem; font-weight: 800; color: #22c55e;">
+            ₹${(pr.net_payable_salary || pr.net_salary || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}
+          </div>
+        </div>
+      </div>
+    `;
+    window.openModal("#payslip-modal");
+    if (window.lucide) window.lucide.createIcons();
   }
 
-  // Action Modals Listeners
+  // Render Documents (SECTION F)
+  function renderDocuments(docs) {
+    const tbody = document.getElementById("documents-tbody");
+    if (!docs || docs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No employee documents uploaded yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = docs.map(d => {
+      const sizeKb = d.file_size_bytes ? (d.file_size_bytes / 1024).toFixed(1) + ' KB' : '--';
+      const typeLabel = (d.document_type || 'Document').replace('_', ' ').toUpperCase();
+      return `
+        <tr>
+          <td><strong>${window.escapeHtml(d.title || 'Untitled Document')}</strong></td>
+          <td><span class="badge blue">${typeLabel}</span></td>
+          <td><span class="muted small" style="font-family: monospace;">${window.escapeHtml(d.file_name || '--')}</span></td>
+          <td>${sizeKb}</td>
+          <td>${(d.created_at || '').slice(0, 10)}</td>
+          <td>${window.escapeHtml(d.notes || '--')}</td>
+          <td>
+            <div style="display: flex; gap: 6px;">
+              ${d.file_path ? `<a href="${d.file_path.startsWith('/') ? d.file_path : '/static/' + d.file_path}" target="_blank" class="btn-secondary small" title="View Document"><i data-lucide="external-link"></i></a>` : ''}
+              <button class="btn-secondary small btn-del-doc" data-id="${d.id}" type="button" title="Delete Document"><i data-lucide="trash-2"></i></button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    document.querySelectorAll(".btn-del-doc").forEach(btn => {
+      btn.addEventListener("click", async function() {
+        if (!confirm("Are you sure you want to delete this document?")) return;
+        try {
+          await window.j(`/api/hr/employees/${EMP_ID}/documents/${this.dataset.id}`, { method: "DELETE" });
+          load360Profile(currentFilterMonth);
+        } catch (err) { alert(err.message || "Failed to delete document"); }
+      });
+    });
+  }
+
+  // Render Timeline (SECTION G)
+  function renderTimeline(timeline) {
+    const container = document.getElementById("timeline-container");
+    const ovContainer = document.getElementById("ov-recent-timeline");
+
+    if (!timeline || timeline.length === 0) {
+      if (container) container.innerHTML = '<div class="empty">No events recorded in lifecycle history yet.</div>';
+      if (ovContainer) ovContainer.innerHTML = '<div class="empty">No recent activity.</div>';
+      return;
+    }
+
+    const html = timeline.map(ev => {
+      let icon = "activity";
+      let badgeClass = "gray";
+      const t = (ev.event_type || "").toLowerCase();
+      if (t.includes("hire") || t.includes("join") || t.includes("create")) { icon = "user-check"; badgeClass = "green"; }
+      else if (t.includes("transfer") || t.includes("department")) { icon = "arrow-right-left"; badgeClass = "blue"; }
+      else if (t.includes("designation")) { icon = "award"; badgeClass = "purple"; }
+      else if (t.includes("promotion")) { icon = "trending-up"; badgeClass = "green"; }
+      else if (t.includes("salary")) { icon = "indian-rupee"; badgeClass = "accent"; }
+      else if (t.includes("leave")) { icon = "calendar-off"; badgeClass = "blue"; }
+      else if (t.includes("exit") || t.includes("status")) { icon = "shield-alert"; badgeClass = "yellow"; }
+      else if (t.includes("doc")) { icon = "file-text"; badgeClass = "blue"; }
+
+      return `
+        <div style="display: flex; gap: 16px; margin-bottom: 20px; position: relative;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <i data-lucide="${icon}" style="width: 18px; height: 18px;"></i>
+          </div>
+          <div style="flex: 1; background: rgba(255,255,255,0.02); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <strong>${window.escapeHtml(ev.event_title || ev.event_type)}</strong>
+              <span class="muted small">${ev.event_date || (ev.created_at || '').slice(0, 10)}</span>
+            </div>
+            <p class="small" style="margin: 6px 0 0; color: var(--text-muted);">${window.escapeHtml(ev.description || '')}</p>
+            ${ev.performed_by_name ? `<div class="muted small" style="margin-top: 4px; font-size: 0.75rem;">Action by: ${window.escapeHtml(ev.performed_by_name)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (container) container.innerHTML = html;
+    if (ovContainer) ovContainer.innerHTML = timeline.slice(0, 4).map(ev => `
+      <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:10px;">
+        <div style="width:8px; height:8px; border-radius:50%; background:var(--accent); margin-top:6px;"></div>
+        <div>
+          <div style="font-weight:600; font-size:0.9rem;">${window.escapeHtml(ev.event_title || ev.event_type)}</div>
+          <div class="muted small">${ev.event_date || (ev.created_at || '').slice(0, 10)} &bull; ${window.escapeHtml(ev.description || '')}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Render Demographics & Organization
+  function renderDemographicsAndOrg(ov) {
+    document.getElementById("p-fullname").textContent = `${ov.first_name || ''} ${ov.middle_name || ''} ${ov.last_name || ''}`.trim() || ov.full_name || '--';
+    document.getElementById("p-gender").textContent = (ov.gender || '--').toUpperCase();
+    document.getElementById("p-dob").textContent = ov.date_of_birth || '--';
+    document.getElementById("p-blood").textContent = ov.blood_group || '--';
+    document.getElementById("p-email").textContent = ov.email || '--';
+    document.getElementById("p-phone").textContent = ov.phone || '--';
+    document.getElementById("p-alt-phone").textContent = ov.alternate_phone || '--';
+    document.getElementById("p-address").textContent = ov.address_line1 || '--';
+    document.getElementById("p-citystate").textContent = `${ov.city || ''} ${ov.state || ''} ${ov.pincode || ''}`.trim() || '--';
+
+    document.getElementById("org-code").textContent = ov.employee_code || '--';
+    document.getElementById("org-dept").textContent = ov.department_name || '--';
+    document.getElementById("org-desig").textContent = ov.designation_name || '--';
+    document.getElementById("org-team").textContent = ov.sub_unit_name || 'General';
+    document.getElementById("org-level").textContent = ov.job_level_name || 'Standard';
+    document.getElementById("org-grade").textContent = ov.job_grade_name || 'Standard Pay Grade';
+    document.getElementById("org-campus").textContent = ov.campus || 'Main Campus';
+    document.getElementById("org-cost-center").textContent = ov.cost_center_code || 'General';
+    document.getElementById("org-manager").textContent = ov.reporting_manager ? ov.reporting_manager.full_name : 'No Direct Manager';
+
+    document.getElementById("org-type").textContent = (ov.employment_type || '--').replace('_', ' ').toUpperCase();
+    document.getElementById("org-status").textContent = (ov.employment_status || 'active').toUpperCase();
+    document.getElementById("org-joining").textContent = ov.joining_date || '--';
+    document.getElementById("org-confirmation").textContent = ov.confirmation_date || '--';
+    document.getElementById("org-probation").textContent = ov.probation_end_date || '--';
+    document.getElementById("org-notice").textContent = `${ov.notice_period_days || 30} days`;
+  }
+
+  // Filter Listeners
+  document.getElementById("btn-apply-att-filter").addEventListener("click", () => {
+    const m = document.getElementById("att-filter-month").value;
+    const s = document.getElementById("att-filter-start").value;
+    const e = document.getElementById("att-filter-end").value;
+    load360Profile(m, s, e);
+  });
+
+  document.getElementById("btn-reset-att-filter").addEventListener("click", () => {
+    document.getElementById("att-filter-month").value = currentFilterMonth;
+    document.getElementById("att-filter-start").value = "";
+    document.getElementById("att-filter-end").value = "";
+    load360Profile(currentFilterMonth);
+  });
+
+  // Refresh Timeline button
+  document.getElementById("btn-refresh-timeline").addEventListener("click", () => {
+    load360Profile(currentFilterMonth);
+  });
+
+  // Upload Document Modal Handlers
+  document.getElementById("btn-upload-doc").addEventListener("click", () => {
+    document.getElementById("doc-title").value = "";
+    document.getElementById("doc-notes").value = "";
+    document.getElementById("doc-file").value = "";
+    document.getElementById("doc-modal-error").hidden = true;
+    window.openModal("#upload-doc-modal");
+  });
+
+  document.getElementById("upload-doc-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const title = document.getElementById("doc-title").value.trim();
+    const docType = document.getElementById("doc-type").value;
+    const notes = document.getElementById("doc-notes").value.trim();
+    const fileInput = document.getElementById("doc-file");
+
+    if (!title || !fileInput.files[0]) {
+      alert("Please provide a document title and file.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("document_type", docType);
+    formData.append("notes", notes);
+    formData.append("file", fileInput.files[0]);
+
+    try {
+      const res = await fetch(`/api/hr/employees/${EMP_ID}/documents`, {
+        method: "POST",
+        body: formData
+      });
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.error || "Failed to upload document");
+      }
+      window.closeModal("#upload-doc-modal");
+      load360Profile(currentFilterMonth);
+    } catch (err) {
+      const errEl = document.getElementById("doc-modal-error");
+      errEl.textContent = err.message || "Failed to upload document";
+      errEl.hidden = false;
+    }
+  });
+
+  // Quick ID Card button
+  document.getElementById("btn-quick-id-card").addEventListener("click", () => {
+    document.querySelector("[data-tab=tab-id-badge]").click();
+  });
+
+  // 1. Transfer Department
+  document.getElementById("btn-open-transfer").addEventListener("click", () => {
+    if (!currentEmpData) return;
+    document.getElementById("trans-current-dept").value = currentEmpData.department_name || 'None';
+    const sel = document.getElementById("trans-new-dept-id");
+    sel.innerHTML = '<option value="">Select New Department</option>' +
+      allDepartments.filter(d => d.id !== currentEmpData.department_id)
+        .map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+    document.getElementById("trans-effective-date").value = new Date().toISOString().slice(0, 10);
+    document.getElementById("transfer-modal-error").hidden = true;
+    window.openModal("#transfer-modal");
+  });
+
+  document.getElementById("transfer-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j(`/api/hr/employees/${EMP_ID}/transfer-department`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          new_department_id: parseInt(document.getElementById("trans-new-dept-id").value),
+          effective_date: document.getElementById("trans-effective-date").value,
+          reason: document.getElementById("trans-reason").value.trim() || null,
+          remarks: document.getElementById("trans-remarks").value.trim() || null
+        })
+      });
+      window.closeModal("#transfer-modal");
+      load360Profile(currentFilterMonth);
+    } catch (err) {
+      const errEl = document.getElementById("transfer-modal-error");
+      errEl.textContent = err.message || "Failed to transfer department";
+      errEl.hidden = false;
+    }
+  });
+
+  // 2. Change Designation
+  document.getElementById("btn-open-desig").addEventListener("click", () => {
+    if (!currentEmpData) return;
+    document.getElementById("desig-current").value = currentEmpData.designation_name || 'None';
+    const sel = document.getElementById("desig-new-id");
+    sel.innerHTML = '<option value="">Select New Designation</option>' +
+      allDesignations.filter(d => d.id !== currentEmpData.designation_id)
+        .map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+    document.getElementById("desig-effective-date").value = new Date().toISOString().slice(0, 10);
+    document.getElementById("desig-modal-error").hidden = true;
+    window.openModal("#desig-modal");
+  });
+
+  document.getElementById("desig-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j(`/api/hr/employees/${EMP_ID}/change-designation`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          new_designation_id: parseInt(document.getElementById("desig-new-id").value),
+          effective_date: document.getElementById("desig-effective-date").value,
+          reason: document.getElementById("desig-reason").value.trim() || null
+        })
+      });
+      window.closeModal("#desig-modal");
+      load360Profile(currentFilterMonth);
+    } catch (err) {
+      const errEl = document.getElementById("desig-modal-error");
+      errEl.textContent = err.message || "Failed to change designation";
+      errEl.hidden = false;
+    }
+  });
+
+  // 3. Change Manager
+  document.getElementById("btn-open-manager").addEventListener("click", () => {
+    const sel = document.getElementById("mgr-new-id");
+    sel.innerHTML = '<option value="">No Direct Manager (Top Level)</option>' +
+      allEmployees.map(e => `<option value="${e.id}">${window.escapeHtml(e.full_name)} (${e.employee_code})</option>`).join('');
+    if (currentEmpData && currentEmpData.reporting_manager_id) {
+      sel.value = currentEmpData.reporting_manager_id;
+    }
+    document.getElementById("manager-modal-error").hidden = true;
+    window.openModal("#manager-modal");
+  });
+
+  document.getElementById("manager-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const val = document.getElementById("mgr-new-id").value;
+      await window.j(`/api/hr/employees/${EMP_ID}/change-manager`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          new_manager_id: val ? parseInt(val) : null
+        })
+      });
+      window.closeModal("#manager-modal");
+      load360Profile(currentFilterMonth);
+    } catch (err) {
+      const errEl = document.getElementById("manager-modal-error");
+      errEl.textContent = err.message || "Failed to change manager";
+      errEl.hidden = false;
+    }
+  });
+
+  // 4. Promotion
+  document.getElementById("btn-open-promotion").addEventListener("click", () => {
+    const desigSel = document.getElementById("promo-desig-id");
+    desigSel.innerHTML = '<option value="">Select Promoted Designation</option>' +
+      allDesignations.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
+    document.getElementById("promo-new-salary").value = currentEmpData ? (currentEmpData.monthly_salary || '') : '';
+    document.getElementById("promo-effective-date").value = new Date().toISOString().slice(0, 10);
+    document.getElementById("promo-modal-error").hidden = true;
+    window.openModal("#promotion-modal");
+  });
+
+  document.getElementById("promotion-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j(`/api/hr/employees/${EMP_ID}/record-promotion`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          new_designation_id: parseInt(document.getElementById("promo-desig-id").value),
+          new_basic_salary: parseFloat(document.getElementById("promo-new-salary").value),
+          effective_date: document.getElementById("promo-effective-date").value,
+          notes: document.getElementById("promo-notes").value.trim() || null
+        })
+      });
+      window.closeModal("#promotion-modal");
+      load360Profile(currentFilterMonth);
+    } catch (err) {
+      const errEl = document.getElementById("promo-modal-error");
+      errEl.textContent = err.message || "Failed to record promotion";
+      errEl.hidden = false;
+    }
+  });
+
+  // 5. Change Status / Exit
+  document.getElementById("btn-open-status").addEventListener("click", () => {
+    if (currentEmpData) {
+      document.getElementById("status-select").value = currentEmpData.employment_status || 'active';
+    }
+    document.getElementById("status-modal-error").hidden = true;
+    window.openModal("#status-modal");
+  });
+
+  document.getElementById("status-select").addEventListener("change", function() {
+    const exitBox = document.getElementById("exit-fields-box");
+    if (["resigned", "terminated", "retired"].includes(this.value)) {
+      exitBox.style.display = "block";
+      document.getElementById("status-exit-date").value = new Date().toISOString().slice(0, 10);
+    } else {
+      exitBox.style.display = "none";
+    }
+  });
+
+  document.getElementById("status-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const st = document.getElementById("status-select").value;
+      if (["resigned", "terminated", "retired"].includes(st)) {
+        await window.j(`/api/hr/employees/${EMP_ID}/record-exit`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            exit_date: document.getElementById("status-exit-date").value,
+            exit_type: document.getElementById("status-exit-type").value,
+            reason: document.getElementById("status-exit-reason").value.trim() || null,
+            status: st
+          })
+        });
+      } else {
+        await window.j(`/api/hr/employees/${EMP_ID}/change-status`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ status: st })
+        });
+      }
+      window.closeModal("#status-modal");
+      load360Profile(currentFilterMonth);
+    } catch (err) {
+      const errEl = document.getElementById("status-modal-error");
+      errEl.textContent = err.message || "Failed to change status";
+      errEl.hidden = false;
+    }
+  });
+
+  // 6. Edit Employee
+  document.getElementById("btn-edit-profile").addEventListener("click", () => {
+    if (!currentEmpData) return;
+    const d = currentEmpData;
+    document.getElementById("ee-first-name").value = d.first_name || '';
+    document.getElementById("ee-middle-name").value = d.middle_name || '';
+    document.getElementById("ee-last-name").value = d.last_name || '';
+    document.getElementById("ee-gender").value = d.gender || 'male';
+    document.getElementById("ee-dob").value = d.date_of_birth || '';
+    document.getElementById("ee-email").value = d.email || '';
+    document.getElementById("ee-phone").value = d.phone || '';
+    document.getElementById("ee-alt-phone").value = d.alternate_phone || '';
+    document.getElementById("ee-address").value = d.address_line1 || '';
+    document.getElementById("ee-city").value = d.city || '';
+    document.getElementById("ee-state").value = d.state || '';
+    document.getElementById("ee-pincode").value = d.pincode || '';
+
+    const deptSel = document.getElementById("ee-department");
+    deptSel.innerHTML = allDepartments.map(dep => `<option value="${dep.id}" ${dep.id === d.department_id ? 'selected' : ''}>${window.escapeHtml(dep.name)}</option>`).join('');
+
+    const desigSel = document.getElementById("ee-designation");
+    desigSel.innerHTML = allDesignations.map(des => `<option value="${des.id}" ${des.id === d.designation_id ? 'selected' : ''}>${window.escapeHtml(des.name)}</option>`).join('');
+
+    document.getElementById("ee-type").value = d.employment_type || 'full_time';
+    document.getElementById("ee-campus").value = d.campus || 'Main Campus';
+    document.getElementById("ee-probation-end-date").value = d.probation_end_date || '';
+    document.getElementById("ee-notice-period").value = d.notice_period_days || 30;
+
+    document.getElementById("ee-modal-error").hidden = true;
+    window.openModal("#edit-emp-modal");
+  });
+
+  document.getElementById("edit-emp-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await window.j(`/api/hr/employees/${EMP_ID}`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          first_name: document.getElementById("ee-first-name").value.trim(),
+          middle_name: document.getElementById("ee-middle-name").value.trim() || null,
+          last_name: document.getElementById("ee-last-name").value.trim(),
+          gender: document.getElementById("ee-gender").value,
+          date_of_birth: document.getElementById("ee-dob").value || null,
+          email: document.getElementById("ee-email").value.trim(),
+          phone: document.getElementById("ee-phone").value.trim(),
+          alternate_phone: document.getElementById("ee-alt-phone").value.trim() || null,
+          address_line1: document.getElementById("ee-address").value.trim() || null,
+          city: document.getElementById("ee-city").value.trim() || null,
+          state: document.getElementById("ee-state").value.trim() || null,
+          pincode: document.getElementById("ee-pincode").value.trim() || null,
+          department_id: parseInt(document.getElementById("ee-department").value),
+          designation_id: parseInt(document.getElementById("ee-designation").value),
+          employment_type: document.getElementById("ee-type").value,
+          campus: document.getElementById("ee-campus").value.trim() || null,
+          probation_end_date: document.getElementById("ee-probation-end-date").value || null,
+          notice_period_days: parseInt(document.getElementById("ee-notice-period").value || 30)
+        })
+      });
+      window.closeModal("#edit-emp-modal");
+      load360Profile(currentFilterMonth);
+    } catch (err) {
+      const errEl = document.getElementById("ee-modal-error");
+      errEl.textContent = err.message || "Failed to update employee details";
+      errEl.hidden = false;
+    }
+  });
+
+  // 7. Apply Leave
   document.getElementById("btn-apply-leave").addEventListener("click", async () => {
     try {
       const types = await window.j("/api/hr/leave-types");
       const sel = document.getElementById("leave-type-select");
       sel.innerHTML = types.map(t => `<option value="${t.id}">${window.escapeHtml(t.name)}</option>`).join('');
+      document.getElementById("leave-start-date").value = new Date().toISOString().slice(0, 10);
+      document.getElementById("leave-end-date").value = new Date().toISOString().slice(0, 10);
       window.openModal("#leave-modal");
     } catch (e) { alert("Failed to load leave types"); }
   });
@@ -711,11 +2335,14 @@ document.addEventListener("DOMContentLoaded", function() {
         })
       });
       window.closeModal("#leave-modal");
-      loadLeaves();
+      load360Profile(currentFilterMonth);
     } catch (err) { alert(err.message || "Failed to submit leave request"); }
   });
 
+  // 8. Configure Salary
   document.getElementById("btn-update-salary").addEventListener("click", () => {
+    document.getElementById("sal-input-effective-from").value = new Date().toISOString().slice(0, 10);
+    document.getElementById("sal-input-basic").value = currentEmpData ? (currentEmpData.monthly_salary || '') : '';
     window.openModal("#salary-modal");
   });
 
@@ -734,127 +2361,14 @@ document.addEventListener("DOMContentLoaded", function() {
         })
       });
       window.closeModal("#salary-modal");
-      loadSalary();
+      load360Profile(currentFilterMonth);
     } catch (err) { alert(err.message || "Failed to save salary structure"); }
   });
 
-  document.getElementById("btn-create-loan").addEventListener("click", () => {
-    window.openModal("#loan-modal");
+  // Initial Load
+  loadMetadata().then(() => {
+    load360Profile(currentFilterMonth);
   });
-
-  document.getElementById("loan-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      await window.j(`/api/hr/employees/${EMP_ID}/loans`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          loan_type: document.getElementById("loan-type-select").value,
-          principal_amount: parseFloat(document.getElementById("loan-amount").value),
-          installment_amount: parseFloat(document.getElementById("loan-installment").value),
-          start_date: document.getElementById("loan-start-date").value,
-          status: "active"
-        })
-      });
-      window.closeModal("#loan-modal");
-      loadLoans();
-    } catch (err) { alert(err.message || "Failed to issue loan"); }
-  });
-
-  // Edit Employee Profile handler
-  document.getElementById("btn-edit-profile").addEventListener("click", async () => {
-    if (!currentEmpData) return;
-    try {
-      const depts = await window.j("/api/hr/departments");
-      const desigs = await window.j("/api/hr/designations");
-      
-      const deptSel = document.getElementById("ee-department-id");
-      const desigSel = document.getElementById("ee-designation-id");
-      
-      deptSel.innerHTML = depts.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
-      desigSel.innerHTML = desigs.map(d => `<option value="${d.id}">${window.escapeHtml(d.name)}</option>`).join('');
-
-      document.getElementById("edit-emp-title").textContent = `Edit Employee (${currentEmpData.employee_code})`;
-      document.getElementById("ee-first-name").value = currentEmpData.first_name || "";
-      document.getElementById("ee-middle-name").value = currentEmpData.middle_name || "";
-      document.getElementById("ee-last-name").value = currentEmpData.last_name || "";
-      document.getElementById("ee-gender").value = currentEmpData.gender || "male";
-      document.getElementById("ee-dob").value = currentEmpData.date_of_birth || "";
-      document.getElementById("ee-email").value = currentEmpData.email || "";
-      document.getElementById("ee-phone").value = currentEmpData.phone || "";
-      document.getElementById("ee-alt-phone").value = currentEmpData.alternate_phone || "";
-      document.getElementById("ee-address").value = currentEmpData.address || "";
-      document.getElementById("ee-city").value = currentEmpData.city || "";
-      document.getElementById("ee-state").value = currentEmpData.state || "";
-      document.getElementById("ee-pincode").value = currentEmpData.pincode || "";
-      document.getElementById("ee-department-id").value = currentEmpData.department_id || "";
-      document.getElementById("ee-designation-id").value = currentEmpData.designation_id || "";
-      document.getElementById("ee-type").value = currentEmpData.employment_type || "full_time";
-      document.getElementById("ee-status").value = currentEmpData.employment_status || "active";
-      document.getElementById("ee-joining-date").value = currentEmpData.joining_date || "";
-      document.getElementById("ee-confirmation-date").value = currentEmpData.confirmation_date || "";
-      document.getElementById("ee-emg-name").value = currentEmpData.emergency_contact_name || "";
-      document.getElementById("ee-emg-phone").value = currentEmpData.emergency_contact_phone || "";
-      document.getElementById("ee-modal-error").hidden = true;
-
-      window.openModal("#edit-emp-modal");
-    } catch (err) {
-      alert("Failed to load metadata for editing employee.");
-    }
-  });
-
-  document.getElementById("edit-emp-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const btn = document.getElementById("ee-submit-btn");
-    const errDiv = document.getElementById("ee-modal-error");
-    errDiv.hidden = true;
-    btn.disabled = true;
-    btn.textContent = "Updating...";
-
-    const payload = {
-      first_name: document.getElementById("ee-first-name").value.trim(),
-      middle_name: document.getElementById("ee-middle-name").value.trim() || null,
-      last_name: document.getElementById("ee-last-name").value.trim(),
-      gender: document.getElementById("ee-gender").value,
-      date_of_birth: document.getElementById("ee-dob").value || null,
-      email: document.getElementById("ee-email").value.trim(),
-      phone: document.getElementById("ee-phone").value.trim(),
-      alternate_phone: document.getElementById("ee-alt-phone").value.trim() || null,
-      address: document.getElementById("ee-address").value.trim() || null,
-      city: document.getElementById("ee-city").value.trim() || null,
-      state: document.getElementById("ee-state").value.trim() || null,
-      pincode: document.getElementById("ee-pincode").value.trim() || null,
-      department_id: parseInt(document.getElementById("ee-department-id").value),
-      designation_id: parseInt(document.getElementById("ee-designation-id").value),
-      employment_type: document.getElementById("ee-type").value,
-      employment_status: document.getElementById("ee-status").value,
-      joining_date: document.getElementById("ee-joining-date").value,
-      confirmation_date: document.getElementById("ee-confirmation-date").value || null,
-      emergency_contact_name: document.getElementById("ee-emg-name").value.trim() || null,
-      emergency_contact_phone: document.getElementById("ee-emg-phone").value.trim() || null,
-    };
-
-    try {
-      await window.j(`/api/hr/employees/${EMP_ID}`, {
-        method: "PUT",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload)
-      });
-      window.closeModal("#edit-emp-modal");
-      await loadProfile();
-    } catch (err) {
-      errDiv.textContent = err.message || "Failed to update employee.";
-      errDiv.hidden = false;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Update Details";
-    }
-  });
-
-  loadProfile();
-  loadLeaves();
-  loadSalary();
-  loadLoans();
 });
 </script>
 {% endblock %}

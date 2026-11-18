@@ -12,7 +12,10 @@ without re-deriving them.
 from __future__ import annotations
 
 from datetime import datetime, time, timezone
+import logging
 from typing import Optional
+
+logger = logging.getLogger("attendance_service")
 
 from database.db import db
 from database.enterprise_models import (
@@ -34,7 +37,9 @@ def _aware(value: Optional[datetime]) -> Optional[datetime]:
     """SQLite returns naive datetimes even for timezone-aware columns."""
     if value is None:
         return None
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc)
+    return value.replace(tzinfo=timezone.utc)
 
 
 def _clock(value: Optional[str], default: str) -> time:
@@ -62,13 +67,45 @@ def _diff_minutes(later: datetime, earlier: datetime) -> int:
 
 
 # --------------------------------------------------------------------- rules
-def _rules_for(kind: str):
+def _rules_for(kind: str, school_id: Optional[int | str] = None):
+    """Resolve applicable time rules following the multi-tenant hierarchy:
+    1. Prefer an applicable rule belonging to the given school_id.
+    2. If no school-specific rule exists, fall back to a global rule where school_id IS NULL.
+    3. If neither exists, instantiate and persist a default rule instance.
+    """
     model = StudentTimeRule if kind == "student" else TeacherTimeRule
-    rules = model.query.first() or model()
-    if rules.id is None:
-        db.session.add(rules)
-        db.session.flush()
+
+    clean_sid = None
+    if school_id is not None and str(school_id).strip() not in ("", "None", "null"):
+        try:
+            clean_sid = int(school_id)
+        except (ValueError, TypeError):
+            clean_sid = str(school_id).strip()
+
+    rules = None
+
+    # 1. Prefer an applicable rule belonging to the person's school_id
+    if clean_sid is not None:
+        rules = model.query.filter_by(school_id=clean_sid).first()
+
+    # 2. If no school-specific rule exists, fall back to a global rule where school_id IS NULL
+    if rules is None:
+        rules = model.query.filter(model.school_id.is_(None)).first()
+
+    # 3. If no applicable rule exists at all, preserve documented default behavior
+    if rules is None:
+        rules = model(school_id=clean_sid)
+        if rules.id is None:
+            db.session.add(rules)
+            db.session.flush()
+
+    logger.info(
+        f"[TIME_RULES_RESOLVE] Resolved {kind} time rule: id={rules.id}, "
+        f"school_id={rules.school_id} (requested={clean_sid}), "
+        f"office_start='{rules.office_start}', late_time='{rules.late_time}'"
+    )
     return rules
+
 
 
 def _initial_status(now_clock: time, rules) -> tuple[str, bool, bool]:
@@ -150,11 +187,17 @@ def _recompute_out_fields(row, rules, now: datetime) -> None:
 def record_recognition(
     person_type: str,
     person_id: int,
-    camera_id: Optional[int],
-    confidence: float,
+    camera_id: Optional[int] = None,
+    confidence: float = 1.0,
     now: Optional[datetime] = None,
+    school_id: Optional[str] = None,
+    auth_method: str = "FACE",
+    device_id: Optional[str] = None,
+    allow_unenrolled_fingerprint: bool = False,
 ) -> dict:
     """Persist exactly one enterprise IN/OUT event.
+
+    Single common attendance engine for all identification methods (FACE, FINGERPRINT).
 
     Parameters
     ----------
@@ -163,27 +206,81 @@ def record_recognition(
     person_id : int
         Database primary key of the matched person.
     camera_id : int | None
-        Camera row that produced the detection.
+        Camera row that produced the detection (for face events).
     confidence : float
-        Cosine similarity of the best match (0..1).
+        Cosine similarity or verification confidence (0..1).
     now : datetime | None
         Override the current time. Used in tests; defaults to ``datetime.now(UTC)``.
+    school_id : str | None
+        Tenant identifier.
+    auth_method : str
+        Identification method used (``"FACE"`` or ``"FINGERPRINT"``).
+    device_id : str | None
+        Hardware device identifier (e.g. BioMax terminal ID).
     """
     if person_type not in {"student", "teacher"}:
         raise ValueError(f"unsupported person type: {person_type}")
+
+    auth_method_norm = (auth_method or "FACE").upper().strip()
+
+    from database.models import Student, Teacher
+    p_model = Student if person_type == "student" else Teacher
+    person_obj = db.session.get(p_model, person_id)
+
+    if person_obj is None:
+        print(f"[ATTENDANCE] rejected {person_type}={person_id}: person not found in database")
+        return {"action": "rejected", "reason": f"{person_type} not found"}
+
+    if not person_obj.is_active:
+        print(f"[ATTENDANCE] rejected {person_type}={person_id}: person is inactive")
+        return {"action": "rejected", "reason": f"{person_type} inactive"}
+
+    # Validate configured attendance method for teachers
+    if person_type == "teacher":
+        expected_method = (getattr(person_obj, "attendance_method", None) or "FACE").upper().strip()
+        if auth_method_norm != expected_method:
+            print(
+                f"[ATTENDANCE] rejected teacher={person_id}: "
+                f"configured for {expected_method} attendance, received {auth_method_norm}"
+            )
+            return {
+                "action": "rejected",
+                "reason": f"invalid attendance method: teacher configured for {expected_method}, received {auth_method_norm}",
+            }
+        if (auth_method_norm == "FINGERPRINT" and not allow_unenrolled_fingerprint
+                and not getattr(person_obj, "fingerprint_enrolled", False)):
+            print(f"[ATTENDANCE] rejected teacher={person_id}: fingerprint not enrolled on device")
+            return {
+                "action": "rejected",
+                "reason": "teacher not enrolled for fingerprint",
+            }
+    elif person_type == "student":
+        if auth_method_norm != "FACE":
+            print(f"[ATTENDANCE] rejected student={person_id}: students only support FACE attendance")
+            return {
+                "action": "rejected",
+                "reason": f"students only support FACE attendance, received {auth_method_norm}",
+            }
+
     model, fk = (
         (StudentAttendance, "student_id")
         if person_type == "student"
         else (TeacherAttendance, "teacher_id")
     )
+    if not school_id and person_obj and person_obj.school_id:
+        school_id = person_obj.school_id
+
     now = _aware(now) or _now()
-    rules = _rules_for(person_type)
+    rules = _rules_for(person_type, school_id=school_id)
     now_clock = now.astimezone().time().replace(tzinfo=None)
+
+    method_label = "Fingerprint verification" if auth_method_norm == "FINGERPRINT" else "Face recognition match"
 
     row = model.query.filter_by(**{fk: person_id, "attendance_date": now.date()}).first()
     if row is None:
         # --- new day, no record yet -----------------------------------
         if now_clock < _clock(rules.office_start, "08:00"):
+            logger.warning(f"[ATTENDANCE_REJECT] Rejected {person_type}={person_id}: before IN start ({now_clock} < {rules.office_start})")
             print(f"[ATTENDANCE] rejected {person_type}={person_id}: before IN start")
             return {"action": "rejected", "reason": "before in start"}
         if now_clock >= _clock(rules.absent_after, "11:00"):
@@ -194,10 +291,17 @@ def record_recognition(
                     "status": "absent",
                     "camera_id": camera_id,
                     "confidence": confidence,
+                    "school_id": school_id,
                 }
             )
             db.session.add(row)
-            db.session.commit()
+            try:
+                db.session.commit()
+                logger.info(f"[ATTENDANCE_COMMIT] Marked absent {person_type}={person_id} attendance_id={row.id}: absent-after threshold ({now_clock} >= {rules.absent_after})")
+            except Exception as exc:
+                db.session.rollback()
+                logger.error(f"[ATTENDANCE_ROLLBACK] Failed to record absent row for {person_type}={person_id}: {exc}")
+                raise
             print(f"[ATTENDANCE] rejected {person_type}={person_id}: absent-after threshold")
             return {"action": "rejected", "reason": "absent after", "attendance_id": row.id}
 
@@ -212,6 +316,7 @@ def record_recognition(
                 "is_early_exit": False,
                 "camera_id": camera_id,
                 "confidence": confidence,
+                "school_id": school_id,
             }
         )
         db.session.add(row)
@@ -221,9 +326,12 @@ def record_recognition(
                 attendance_type=person_type,
                 attendance_id=row.id,
                 event_type="in",
+                auth_method=auth_method_norm,
+                device_id=device_id,
                 event_time=now,
                 camera_id=camera_id,
                 confidence=confidence,
+                school_id=school_id,
             )
         )
         _recompute_out_fields(row, rules, now)
@@ -235,29 +343,48 @@ def record_recognition(
                 old_value=None,
                 new_value=now.isoformat(),
                 edited_by="system",
-                reason=f"Face recognition match (confidence: {confidence:.3f})",
+                reason=f"{method_label} (confidence: {confidence:.3f}, method: {auth_method_norm})",
+                school_id=school_id,
             )
         )
-        db.session.commit()
+        try:
+            db.session.commit()
+            logger.info(
+                f"[ATTENDANCE_COMMIT] Inserted {person_type}={person_id} "
+                f"attendance_id={row.id} event=in status={row.status} method={auth_method_norm} confidence={confidence:.3f}"
+            )
+        except Exception as exc:
+            db.session.rollback()
+            logger.error(f"[ATTENDANCE_ROLLBACK] Failed to commit IN attendance for {person_type}={person_id}: {exc}")
+            raise
         print(
             f"[ATTENDANCE] inserted {person_type}={person_id} "
-            f"attendance_id={row.id} event=in status={row.status} confidence={confidence:.3f}"
+            f"attendance_id={row.id} event=in status={row.status} method={auth_method_norm} confidence={confidence:.3f}"
         )
         return {
             "action": "inserted",
             "event": "in",
             "attendance_id": row.id,
             "status": row.status,
+            "method": auth_method_norm,
         }
 
     if row.out_time is None:
         if row.in_time is None:
+            logger.warning(
+                f"[ATTENDANCE_REJECT] Rejected {person_type}={person_id}: "
+                f"daily status is {row.status}; no IN exists"
+            )
             print(
                 f"[ATTENDANCE] rejected {person_type}={person_id}: "
                 f"daily status is {row.status}; no IN exists"
             )
             return {"action": "rejected", "reason": "no in time", "attendance_id": row.id}
         if now_clock < _clock(rules.out_detection_start, "16:00"):
+            logger.info(
+                f"[ATTENDANCE_DUPLICATE_IGNORED] Ignored punch {person_type}={person_id}: "
+                f"OUT window opens at {rules.out_detection_start} (current={now_clock})"
+            )
             print(
                 f"[ATTENDANCE] ignored {person_type}={person_id}: "
                 f"OUT window opens at {rules.out_detection_start}"
@@ -275,9 +402,12 @@ def record_recognition(
                 attendance_type=person_type,
                 attendance_id=row.id,
                 event_type="out",
+                auth_method=auth_method_norm,
+                device_id=device_id,
                 event_time=now,
                 camera_id=camera_id,
                 confidence=confidence,
+                school_id=school_id or row.school_id,
             )
         )
         _recompute_out_fields(row, rules, now)
@@ -289,20 +419,37 @@ def record_recognition(
                 old_value=None,
                 new_value=now.isoformat(),
                 edited_by="system",
-                reason=f"Face recognition match (confidence: {confidence:.3f})",
+                reason=f"{method_label} (confidence: {confidence:.3f}, method: {auth_method_norm})",
+                school_id=school_id or row.school_id,
             )
         )
-        db.session.commit()
+        try:
+            db.session.commit()
+            logger.info(
+                f"[ATTENDANCE_COMMIT] Updated {person_type}={person_id} "
+                f"attendance_id={row.id} event=out status={row.status} method={auth_method_norm}"
+            )
+        except Exception as exc:
+            db.session.rollback()
+            logger.error(f"[ATTENDANCE_ROLLBACK] Failed to commit OUT attendance for {person_type}={person_id}: {exc}")
+            raise
         print(
             f"[ATTENDANCE] updated {person_type}={person_id} "
-            f"attendance_id={row.id} event=out status={row.status}"
+            f"attendance_id={row.id} event=out status={row.status} method={auth_method_norm}"
         )
         return {
             "action": "updated",
             "event": "out",
             "attendance_id": row.id,
             "status": row.status,
+            "method": auth_method_norm,
         }
 
+    logger.warning(f"[ATTENDANCE_DUPLICATE_REJECT] Rejected duplicate punch {person_type}={person_id}: daily IN and OUT already exist")
     print(f"[ATTENDANCE] rejected {person_type}={person_id}: daily IN and OUT already exist")
     return {"action": "rejected", "reason": "daily attendance complete", "attendance_id": row.id}
+
+
+# Unified entry point alias for multi-modal identity processing
+process_attendance_identity = record_recognition
+

@@ -106,3 +106,57 @@
 
 ### `GET /api/attendance/extended` & `GET /api/reports/<rptype>`
 * **Description**: Extended attendance filtering and CSV export generators.
+
+---
+
+## 5. Fingerprint Device Management API (`app.py` & `biometrics/`)
+
+### `GET /admin/devices/fingerprint` (Alias: `/devices/fingerprint`)
+* **Description**: Renders the admin Fingerprint Device Management page.
+* **RBAC Permission**: `devices.view` (Admin, Principal, HR Admin). Forbidden for Teachers.
+
+### `GET /api/devices/fingerprint/config` & `POST /api/devices/fingerprint/config`
+* **Description**: Retrieve/update the configured fingerprint terminal (`name`, `model`, `connection_type`, `ip_address`, vendor-confirmed `port`, `comm_key`, `timeout_seconds`). POST may accept a `webhook_token` of at least 32 characters; only its hash is stored.
+* **RBAC Permission**: `devices.view` (GET), `devices.manage` (POST).
+
+### `POST /api/devices/fingerprint/connect` & `POST /api/devices/fingerprint/disconnect`
+* **Description**: Establish or terminate connection with physical terminal / adapter.
+* **RBAC Permission**: `devices.manage`.
+
+### `POST /api/devices/fingerprint/test-connection`
+* **Description**: TCP reachability measurement only; does not perform a Team Office protocol handshake.
+* **Response**: A reachable socket reports `NETWORK_REACHABLE`; protocol, authentication, and operation remain unverified.
+* **RBAC Permission**: `devices.test`.
+
+### `GET /api/devices/fingerprint/status`
+* **Description**: Aggregated live connection state, hardware metadata, and teacher mapping statistics.
+* **RBAC Permission**: `devices.view`.
+
+### `GET /api/devices/fingerprint/mappings` & `POST /api/devices/fingerprint/mappings`
+* **Description**: List teacher-device user ID mappings or create unique 1-to-1 mapping.
+* **Conflict Prevention**: Rejects duplicate device user ID assignments with `409 Conflict`.
+* **RBAC Permission**: `devices.view` (GET), `devices.manage` (POST).
+
+### `DELETE /api/devices/fingerprint/mappings/<tid>`
+* **Description**: Unregisters device user ID and removes enrollment from teacher record.
+* **RBAC Permission**: `devices.manage`.
+
+### `POST /api/devices/fingerprint/enroll`
+* **Description**: The mock adapter simulates enrollment. The real Team Office Z305 adapter returns `UNVERIFIED` until the vendor SDK and model-specific protocol are implemented and confirmed.
+* **RBAC Permission**: `devices.enroll`.
+
+### `POST /api/devices/fingerprint/test-verify`
+* **Description**: Safe diagnostic verification test for validating Teacher ID resolution.
+* **Safety Contract**: **NEVER creates or alters attendance records**.
+* **RBAC Permission**: `devices.test`.
+
+### `GET /api/devices/fingerprint/events`
+* **Description**: Real-time event monitor and hardware audit logs.
+* **RBAC Permission**: `devices.view`.
+
+### `POST /api/devices/biomax/event` (Alias: `/api/devices/fingerprint/verify`)
+* **Description**: AttendanceOS-normalized event receiver; this contract is not a claim that Team Office Z305 firmware supports HTTP push.
+* **Device authentication**: Per-device `Authorization: Bearer <token>` credential; token hash is stored. Authenticated administrators retain normal session/RBAC/CSRF checks.
+* **Body**: `{"user_id": "0007", "device_id": "configured-id", "timestamp": "2026-11-03T08:30:00+05:30", "verify_type": "FINGERPRINT", "event_id": "optional-id"}`. IDs are strings, device must be registered/active and assigned to a school, teacher must have an explicit matching device ID mapping and be active/enrolled.
+* **Replay/deduplication**: Unique database event receipts reject repeated event IDs or normalized duplicate payloads.
+* **Attendance Flow**: Validated events feed into `record_recognition` with the device's school scope and configured timezone.

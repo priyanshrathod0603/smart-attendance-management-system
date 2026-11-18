@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Cameras - Krishna English School ERP{% endblock %}
+{% block title %}Cameras - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}<i data-lucide="video"></i><span>Cameras</span>{% endblock %}
 {% block content %}
 <section class="card glass filters">

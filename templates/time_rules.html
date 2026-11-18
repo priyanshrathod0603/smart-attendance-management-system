@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ active_time_scope|title }} Time Rules - Krishna English School ERP{% endblock %}
+{% block title %}{{ active_time_scope|title }} Time Rules - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="timer"></i><span>Attendance Time Management</span>
   <i data-lucide="chevron-right" style="width:14px;height:14px;opacity:.5"></i>

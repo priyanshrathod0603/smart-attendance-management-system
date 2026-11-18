@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Payroll Management - Krishna ERP{% endblock %}
+{% block title %}Payroll Management - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="briefcase"></i><span>HR Management</span> <i data-lucide="chevron-right"></i> <span>Payroll</span>
 {% endblock %}
@@ -294,7 +294,7 @@ document.addEventListener("DOMContentLoaded", function() {
         <div style="border:1px solid var(--glass-border); padding:20px; border-radius:var(--radius-md); background:white;">
           <div style="display:flex; justify-content:space-between; border-bottom:2px solid #007AFF; padding-bottom:12px; margin-bottom:16px;">
             <div>
-              <h3 style="margin:0; color:#007AFF;">KRISHNA ENGLISH SCHOOL</h3>
+              <h3 style="margin:0; color:#007AFF;">{{ (current_school.name|upper) if current_school else 'INSTITUTION PAYROLL' }}</h3>
               <div class="muted small">Payslip Record #${r.id}</div>
             </div>
             <div style="text-align:right;">

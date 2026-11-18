@@ -43,22 +43,229 @@ def _dec(v) -> float | None:
     return float(v)
 
 
+class DictMappingMixin:
+    """Provides dictionary-like subscripting and .get() to SQLAlchemy models."""
+    def __getitem__(self, key):
+        if hasattr(self, "to_dict"):
+            d = self.to_dict()
+            if key in d:
+                return d[key]
+        if hasattr(self, key):
+            return getattr(self, key)
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+
+# ============================================================
+# COST CENTERS
+# ============================================================
+class CostCenter(DictMappingMixin, db.Model):
+    """Cost centers for department and organizational finance accounting."""
+
+    __tablename__ = "cost_centers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    code = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    department_id = db.Column(
+        db.Integer,
+        db.ForeignKey("departments.id", use_alter=True, name="fk_cost_center_dept"),
+        nullable=True
+    )
+    manager_id = db.Column(
+        db.Integer,
+        db.ForeignKey("employees.id", use_alter=True, name="fk_cost_center_mgr"),
+        nullable=True
+    )
+    status = db.Column(db.String(20), default="active", nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
+                           onupdate=func.now(), nullable=False)
+
+    department = db.relationship("Department", foreign_keys=[department_id])
+    manager = db.relationship("Employee", foreign_keys=[manager_id])
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_cost_center_status"),
+        UniqueConstraint("school_id", "code", name="uq_cost_center_school_code"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "code": self.code,
+            "name": self.name,
+            "description": self.description,
+            "department_id": self.department_id,
+            "department_name": self.department.name if self.department else None,
+            "manager_id": self.manager_id,
+            "manager_name": self.manager.full_name if self.manager else None,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ============================================================
+# JOB LEVELS
+# ============================================================
+class JobLevel(DictMappingMixin, db.Model):
+    """Job levels (e.g., L1, L2, L3, Executive, Junior, Senior)."""
+
+    __tablename__ = "job_levels"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    code = db.Column(db.String(30), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    level_rank = db.Column(db.Integer, default=1, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), default="active", nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
+                           onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_job_level_status"),
+        UniqueConstraint("school_id", "code", name="uq_job_level_school_code"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "code": self.code,
+            "name": self.name,
+            "level_rank": self.level_rank,
+            "rank": self.level_rank,
+            "description": self.description,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ============================================================
+# JOB GRADES
+# ============================================================
+class JobGrade(DictMappingMixin, db.Model):
+    """Job grades with optional salary bands and standard notice periods."""
+
+    __tablename__ = "job_grades"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    code = db.Column(db.String(30), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    min_salary = db.Column(db.Numeric(10, 2), nullable=True)
+    max_salary = db.Column(db.Numeric(10, 2), nullable=True)
+    standard_notice_days = db.Column(db.Integer, default=30, nullable=False)
+    benefits_summary = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), default="active", nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
+                           onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_job_grade_status"),
+        UniqueConstraint("school_id", "code", name="uq_job_grade_school_code"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "code": self.code,
+            "name": self.name,
+            "min_salary": _dec(self.min_salary),
+            "max_salary": _dec(self.max_salary),
+            "standard_notice_days": self.standard_notice_days,
+            "benefits_summary": self.benefits_summary,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ============================================================
+# EMPLOYMENT TYPES (CONFIGURABLE)
+# ============================================================
+class EmploymentType(DictMappingMixin, db.Model):
+    """Configurable employment types (Full-time, Part-time, Visiting Faculty, Consultant, etc.)."""
+
+    __tablename__ = "employment_types"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    code = db.Column(db.String(40), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+    status = db.Column(db.String(20), default="active", nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
+                           onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_employment_type_status"),
+        UniqueConstraint("school_id", "code", name="uq_employment_type_school_code"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "code": self.code,
+            "name": self.name,
+            "description": self.description,
+            "is_default": self.is_default,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 # ============================================================
 # DEPARTMENTS
 # ============================================================
-class Department(db.Model):
+class Department(DictMappingMixin, db.Model):
     """School / institution departments."""
 
     __tablename__ = "departments"
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), unique=True, nullable=False)
-    code = db.Column(db.String(20), unique=True, nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    name = db.Column(db.String(120), nullable=False)
+    code = db.Column(db.String(20), nullable=False)
     description = db.Column(db.Text, nullable=True)
     # Self-referential through Employee — set after Employee is defined.
     head_employee_id = db.Column(
         db.Integer,
         db.ForeignKey("employees.id", use_alter=True, name="fk_department_head_employee"),
+        nullable=True
+    )
+    parent_department_id = db.Column(
+        db.Integer,
+        db.ForeignKey("departments.id", use_alter=True, name="fk_department_parent"),
+        nullable=True
+    )
+    campus = db.Column(db.String(120), nullable=True)
+    cost_center_id = db.Column(
+        db.Integer,
+        db.ForeignKey("cost_centers.id", use_alter=True, name="fk_department_cost_center"),
         nullable=True
     )
     status = db.Column(db.String(20), default="active", nullable=False)
@@ -72,6 +279,11 @@ class Department(db.Model):
         foreign_keys="Designation.department_id",
         cascade="all, delete-orphan"
     )
+    teams = db.relationship(
+        "Team", back_populates="department",
+        foreign_keys="Team.department_id",
+        cascade="all, delete-orphan"
+    )
     employees = db.relationship(
         "Employee", back_populates="department",
         foreign_keys="Employee.department_id"
@@ -79,18 +291,91 @@ class Department(db.Model):
     head_employee = db.relationship(
         "Employee", foreign_keys=[head_employee_id]
     )
+    parent_department = db.relationship(
+        "Department", remote_side=[id], foreign_keys=[parent_department_id],
+        backref=db.backref("sub_departments", lazy="dynamic")
+    )
+    cost_center = db.relationship(
+        "CostCenter", foreign_keys=[cost_center_id]
+    )
 
     __table_args__ = (
         CheckConstraint("status IN ('active', 'inactive')", name="ck_department_status"),
+        UniqueConstraint("school_id", "code", name="uq_department_school_code"),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "name": self.name,
             "code": self.code,
             "description": self.description,
             "head_employee_id": self.head_employee_id,
+            "head_employee_name": self.head_employee.full_name if self.head_employee else None,
+            "parent_department_id": self.parent_department_id,
+            "parent_department_name": self.parent_department.name if self.parent_department else None,
+            "parent_dept_name": self.parent_department.name if self.parent_department else None,
+            "campus": self.campus,
+            "cost_center_id": self.cost_center_id,
+            "cost_center_name": self.cost_center.name if self.cost_center else None,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ============================================================
+# TEAMS
+# ============================================================
+class Team(DictMappingMixin, db.Model):
+    """Teams belonging to departments."""
+
+    __tablename__ = "teams"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    name = db.Column(db.String(120), nullable=False)
+    code = db.Column(db.String(30), nullable=False)
+    department_id = db.Column(db.Integer, db.ForeignKey("departments.id"), nullable=False)
+    team_lead_id = db.Column(
+        db.Integer,
+        db.ForeignKey("employees.id", use_alter=True, name="fk_team_lead"),
+        nullable=True
+    )
+    description = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), default="active", nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
+                           onupdate=func.now(), nullable=False)
+
+    department = db.relationship(
+        "Department", back_populates="teams",
+        foreign_keys=[department_id]
+    )
+    team_lead = db.relationship("Employee", foreign_keys=[team_lead_id])
+    employees = db.relationship(
+        "Employee", back_populates="team",
+        foreign_keys="Employee.team_id"
+    )
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_team_status"),
+        UniqueConstraint("school_id", "department_id", "code", name="uq_team_dept_code"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "name": self.name,
+            "code": self.code,
+            "department_id": self.department_id,
+            "department_name": self.department.name if self.department else None,
+            "team_lead_id": self.team_lead_id,
+            "team_lead_name": self.team_lead.full_name if self.team_lead else None,
+            "description": self.description,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -100,16 +385,20 @@ class Department(db.Model):
 # ============================================================
 # DESIGNATIONS
 # ============================================================
-class Designation(db.Model):
+class Designation(DictMappingMixin, db.Model):
     """Job designations / positions within departments."""
 
     __tablename__ = "designations"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     name = db.Column(db.String(120), nullable=False)
-    code = db.Column(db.String(20), unique=True, nullable=False)
+    code = db.Column(db.String(20), nullable=False)
     description = db.Column(db.Text, nullable=True)
     department_id = db.Column(db.Integer, db.ForeignKey("departments.id"), nullable=True)
+    job_level_id = db.Column(db.Integer, db.ForeignKey("job_levels.id"), nullable=True)
+    job_grade_id = db.Column(db.Integer, db.ForeignKey("job_grades.id"), nullable=True)
     status = db.Column(db.String(20), default="active", nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
@@ -120,6 +409,8 @@ class Designation(db.Model):
         "Department", back_populates="designations",
         foreign_keys=[department_id]
     )
+    job_level = db.relationship("JobLevel", foreign_keys=[job_level_id])
+    job_grade = db.relationship("JobGrade", foreign_keys=[job_grade_id])
     employees = db.relationship(
         "Employee", back_populates="designation",
         foreign_keys="Employee.designation_id"
@@ -127,16 +418,22 @@ class Designation(db.Model):
 
     __table_args__ = (
         CheckConstraint("status IN ('active', 'inactive')", name="ck_designation_status"),
+        UniqueConstraint("school_id", "code", name="uq_designation_school_code"),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "name": self.name,
             "code": self.code,
             "description": self.description,
             "department_id": self.department_id,
             "department_name": self.department.name if self.department else None,
+            "job_level_id": self.job_level_id,
+            "job_level_name": self.job_level.name if self.job_level else None,
+            "job_grade_id": self.job_grade_id,
+            "job_grade_name": self.job_grade.name if self.job_grade else None,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -146,7 +443,7 @@ class Designation(db.Model):
 # ============================================================
 # EMPLOYEES
 # ============================================================
-class Employee(db.Model):
+class Employee(DictMappingMixin, db.Model):
     """HR Employee layer that references (but does not replace) the existing
     ``teachers`` table.  ``teacher_id`` is nullable so non-teacher staff can
     also be represented.
@@ -155,9 +452,11 @@ class Employee(db.Model):
     __tablename__ = "employees"
 
     id = db.Column(db.Integer, primary_key=True)
-    employee_code = db.Column(db.String(50), unique=True, nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_code = db.Column(db.String(50), nullable=False)
     # Nullable FK to existing teachers table
-    teacher_id = db.Column(db.Integer, db.ForeignKey("teachers.id"), nullable=True, unique=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey("teachers.id"), nullable=True)
     first_name = db.Column(db.String(60), nullable=False)
     middle_name = db.Column(db.String(60), nullable=True)
     last_name = db.Column(db.String(60), nullable=False)
@@ -165,15 +464,34 @@ class Employee(db.Model):
     date_of_birth = db.Column(db.Date, nullable=True)
     joining_date = db.Column(db.Date, nullable=False)
     confirmation_date = db.Column(db.Date, nullable=True)
-    employment_type = db.Column(db.String(30), nullable=False)
+    exit_date = db.Column(db.Date, nullable=True)
+    exit_reason = db.Column(db.Text, nullable=True)
+    employment_type = db.Column(db.String(40), nullable=False)
     employment_status = db.Column(db.String(20), default="active", nullable=False)
-    department_id = db.Column(db.Integer, db.ForeignKey("departments.id"), nullable=True)
-    designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"), nullable=True)
-    reporting_manager_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
 
+    # Organization assignments
+    department_id = db.Column(db.Integer, db.ForeignKey("departments.id"), nullable=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=True)
+    designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"), nullable=True)
+    job_grade_id = db.Column(db.Integer, db.ForeignKey("job_grades.id"), nullable=True)
+    job_level_id = db.Column(db.Integer, db.ForeignKey("job_levels.id"), nullable=True)
+    cost_center_id = db.Column(db.Integer, db.ForeignKey("cost_centers.id"), nullable=True)
+    reporting_manager_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    campus = db.Column(db.String(120), nullable=True)
+
+    # Probation & Notice period
+    probation_status = db.Column(db.String(30), default="not_applicable", nullable=False)
+    probation_start_date = db.Column(db.Date, nullable=True)
+    probation_end_date = db.Column(db.Date, nullable=True)
+    probation_duration_days = db.Column(db.Integer, nullable=True)
+    probation_extension_reason = db.Column(db.Text, nullable=True)
+    notice_period_days = db.Column(db.Integer, default=30, nullable=True)
+    notice_period_unit = db.Column(db.String(20), default="days", nullable=True)
+
+    # Contact info
     phone = db.Column(db.String(20), nullable=False)
     alternate_phone = db.Column(db.String(20), nullable=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    email = db.Column(db.String(120), nullable=False)
     address = db.Column(db.Text, nullable=True)
     city = db.Column(db.String(60), nullable=True)
     state = db.Column(db.String(60), nullable=True)
@@ -190,6 +508,8 @@ class Employee(db.Model):
 
     profile_image = db.Column(db.String(255), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    custom_fields = db.Column(JSON().with_variant(JSONB, "postgresql"), nullable=True, default=dict)
+    qr_identifier = db.Column(db.String(64), unique=True, nullable=True, index=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
@@ -202,14 +522,54 @@ class Employee(db.Model):
         "Department", back_populates="employees",
         foreign_keys=[department_id]
     )
+    team = db.relationship(
+        "Team", back_populates="employees",
+        foreign_keys=[team_id]
+    )
     designation = db.relationship(
         "Designation", back_populates="employees",
         foreign_keys=[designation_id]
     )
+    job_grade = db.relationship("JobGrade", foreign_keys=[job_grade_id])
+    job_level = db.relationship("JobLevel", foreign_keys=[job_level_id])
+    cost_center = db.relationship("CostCenter", foreign_keys=[cost_center_id])
     reporting_manager = db.relationship(
         "Employee", remote_side=[id],
         foreign_keys=[reporting_manager_id],
         backref=db.backref("subordinates", lazy="dynamic")
+    )
+
+    emergency_contacts = db.relationship(
+        "EmployeeEmergencyContact", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeeEmergencyContact.employee_id"
+    )
+    dependents = db.relationship(
+        "EmployeeDependent", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeeDependent.employee_id"
+    )
+    department_history = db.relationship(
+        "EmployeeDepartmentHistory", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeeDepartmentHistory.employee_id"
+    )
+    designation_history = db.relationship(
+        "EmployeeDesignationHistory", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeeDesignationHistory.employee_id"
+    )
+    manager_history = db.relationship(
+        "EmployeeManagerHistory", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeeManagerHistory.employee_id"
+    )
+    status_history = db.relationship(
+        "EmployeeStatusHistory", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeeStatusHistory.employee_id"
+    )
+    promotions = db.relationship(
+        "EmployeePromotion", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeePromotion.employee_id"
+    )
+    timeline_events = db.relationship(
+        "EmployeeTimelineEvent", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeeTimelineEvent.employee_id"
     )
 
     employment_history = db.relationship(
@@ -252,14 +612,14 @@ class Employee(db.Model):
         "PayrollRecord", back_populates="employee",
         cascade="all, delete-orphan"
     )
+    documents = db.relationship(
+        "EmployeeDocument", back_populates="employee",
+        cascade="all, delete-orphan", foreign_keys="EmployeeDocument.employee_id"
+    )
 
     __table_args__ = (
         CheckConstraint(
-            "employment_type IN ('full_time', 'part_time', 'contract', 'probation')",
-            name="ck_employee_employment_type"
-        ),
-        CheckConstraint(
-            "employment_status IN ('active', 'inactive', 'terminated', 'resigned')",
+            "employment_status IN ('active', 'inactive', 'terminated', 'resigned', 'probation', 'notice_period')",
             name="ck_employee_employment_status"
         ),
     )
@@ -272,6 +632,7 @@ class Employee(db.Model):
     def to_dict(self, include_sensitive: bool = False) -> dict:
         data = {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_code": self.employee_code,
             "teacher_id": self.teacher_id,
             "first_name": self.first_name,
@@ -284,16 +645,34 @@ class Employee(db.Model):
             "confirmation_date": (
                 self.confirmation_date.isoformat() if self.confirmation_date else None
             ),
+            "exit_date": self.exit_date.isoformat() if self.exit_date else None,
+            "exit_reason": self.exit_reason,
             "employment_type": self.employment_type,
             "employment_status": self.employment_status,
             "department_id": self.department_id,
             "department_name": self.department.name if self.department else None,
+            "team_id": self.team_id,
+            "team_name": self.team.name if self.team else None,
             "designation_id": self.designation_id,
             "designation_name": self.designation.name if self.designation else None,
+            "job_grade_id": self.job_grade_id,
+            "job_grade_name": self.job_grade.name if self.job_grade else None,
+            "job_level_id": self.job_level_id,
+            "job_level_name": self.job_level.name if self.job_level else None,
+            "cost_center_id": self.cost_center_id,
+            "cost_center_name": self.cost_center.name if self.cost_center else None,
             "reporting_manager_id": self.reporting_manager_id,
             "reporting_manager_name": (
                 self.reporting_manager.full_name if self.reporting_manager else None
             ),
+            "campus": self.campus,
+            "probation_status": self.probation_status or "not_applicable",
+            "probation_start_date": self.probation_start_date.isoformat() if self.probation_start_date else None,
+            "probation_end_date": self.probation_end_date.isoformat() if self.probation_end_date else None,
+            "probation_duration_days": self.probation_duration_days,
+            "probation_extension_reason": self.probation_extension_reason,
+            "notice_period_days": self.notice_period_days,
+            "notice_period_unit": self.notice_period_unit or "days",
             "phone": self.phone,
             "alternate_phone": self.alternate_phone,
             "email": self.email,
@@ -308,6 +687,8 @@ class Employee(db.Model):
             "aadhaar_last4": self.aadhaar_last4,
             "profile_image": self.profile_image,
             "notes": self.notes,
+            "custom_fields": self.custom_fields or {},
+            "qr_identifier": self.qr_identifier,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -321,6 +702,102 @@ class Employee(db.Model):
 
 
 # ============================================================
+# EMERGENCY CONTACTS
+# ============================================================
+class EmployeeEmergencyContact(DictMappingMixin, db.Model):
+    """Multiple emergency contacts per employee with primary contact flag."""
+
+    __tablename__ = "employee_emergency_contacts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    relationship = db.Column(db.String(50), nullable=False)
+    phone = db.Column(db.String(30), nullable=False)
+    alternate_phone = db.Column(db.String(30), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    address = db.Column(db.Text, nullable=True)
+    is_primary = db.Column(db.Boolean, default=False, nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
+                           onupdate=func.now(), nullable=False)
+
+    employee = db.relationship("Employee", back_populates="emergency_contacts")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "name": self.name,
+            "contact_name": self.name,
+            "relationship": self.relationship,
+            "phone": self.phone,
+            "phone_primary": self.phone,
+            "alternate_phone": self.alternate_phone,
+            "phone_secondary": self.alternate_phone,
+            "email": self.email,
+            "address": self.address,
+            "is_primary": self.is_primary,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ============================================================
+# FAMILY / DEPENDENTS
+# ============================================================
+class EmployeeDependent(DictMappingMixin, db.Model):
+    """Family members / dependents of an employee."""
+
+    __tablename__ = "employee_dependents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    relationship = db.Column(db.String(50), nullable=False)
+    date_of_birth = db.Column(db.Date, nullable=True)
+    gender = db.Column(db.String(20), nullable=True)
+    contact_phone = db.Column(db.String(30), nullable=True)
+    is_dependent = db.Column(db.Boolean, default=True, nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), default="active", nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(),
+                           onupdate=func.now(), nullable=False)
+
+    employee = db.relationship("Employee", back_populates="dependents")
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_emp_dependent_status"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "name": self.name,
+            "full_name": self.name,
+            "relationship": self.relationship,
+            "date_of_birth": self.date_of_birth.isoformat() if self.date_of_birth else None,
+            "gender": self.gender,
+            "contact_phone": self.contact_phone,
+            "is_dependent": self.is_dependent,
+            "notes": self.notes,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# ============================================================
 # EMPLOYMENT HISTORY
 # ============================================================
 class EmployeeEmploymentHistory(db.Model):
@@ -329,11 +806,13 @@ class EmployeeEmploymentHistory(db.Model):
     __tablename__ = "employee_employment_history"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     department_id = db.Column(db.Integer, db.ForeignKey("departments.id"), nullable=True)
     designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"), nullable=True)
     reporting_manager_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
-    employment_type = db.Column(db.String(30), nullable=False)
+    employment_type = db.Column(db.String(40), nullable=False)
     joining_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=True)
     reason = db.Column(db.String(200), nullable=True)
@@ -350,16 +829,13 @@ class EmployeeEmploymentHistory(db.Model):
     reporting_manager = db.relationship("Employee", foreign_keys=[reporting_manager_id])
 
     __table_args__ = (
-        CheckConstraint(
-            "employment_type IN ('full_time', 'part_time', 'contract', 'probation')",
-            name="ck_emp_history_employment_type"
-        ),
         CheckConstraint("status IN ('active', 'ended')", name="ck_emp_history_status"),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "department_id": self.department_id,
             "designation_id": self.designation_id,
@@ -386,7 +862,9 @@ class SalaryComponent(db.Model):
     __tablename__ = "salary_components"
 
     id = db.Column(db.Integer, primary_key=True)
-    component_code = db.Column(db.String(20), unique=True, nullable=False)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    component_code = db.Column(db.String(20), nullable=False)
     component_name = db.Column(db.String(100), nullable=False)
     component_type = db.Column(db.String(10), nullable=False)
     calculation_type = db.Column(db.String(10), nullable=False)
@@ -427,6 +905,7 @@ class SalaryComponent(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "component_code": self.component_code,
             "component_name": self.component_name,
             "component_type": self.component_type,
@@ -455,6 +934,8 @@ class EmployeeSalaryStructure(db.Model):
     __tablename__ = "employee_salary_structures"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     effective_from = db.Column(db.Date, nullable=False)
     effective_to = db.Column(db.Date, nullable=True)
@@ -504,6 +985,7 @@ class EmployeeSalaryStructure(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "effective_from": self.effective_from.isoformat() if self.effective_from else None,
             "effective_to": self.effective_to.isoformat() if self.effective_to else None,
@@ -532,6 +1014,8 @@ class EmployeeSalaryComponent(db.Model):
     __tablename__ = "employee_salary_components"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     salary_structure_id = db.Column(
         db.Integer, db.ForeignKey("employee_salary_structures.id"), nullable=False
     )
@@ -558,12 +1042,303 @@ class EmployeeSalaryComponent(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "salary_structure_id": self.salary_structure_id,
             "component_id": self.component_id,
             "component_name": self.component.component_name if self.component else None,
             "component_type": self.component.component_type if self.component else None,
             "amount": _dec(self.amount),
             "percentage": self.percentage,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ============================================================
+# DEPARTMENT TRANSFER HISTORY
+# ============================================================
+class EmployeeDepartmentHistory(DictMappingMixin, db.Model):
+    """Department transfer history with effective dates and audit trail."""
+
+    __tablename__ = "employee_department_history"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_department_id = db.Column(db.Integer, db.ForeignKey("departments.id"), nullable=True)
+    new_department_id = db.Column(db.Integer, db.ForeignKey("departments.id"), nullable=False)
+    effective_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=True)
+    reason = db.Column(db.Text, nullable=True)
+    remarks = db.Column(db.Text, nullable=True)
+    changed_by_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    status = db.Column(db.String(20), default="effective", nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    employee = db.relationship("Employee", foreign_keys=[employee_id], back_populates="department_history")
+    previous_department = db.relationship("Department", foreign_keys=[previous_department_id])
+    new_department = db.relationship("Department", foreign_keys=[new_department_id])
+    changed_by = db.relationship("Employee", foreign_keys=[changed_by_id])
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "previous_department_id": self.previous_department_id,
+            "previous_department_name": self.previous_department.name if self.previous_department else None,
+            "new_department_id": self.new_department_id,
+            "new_department_name": self.new_department.name if self.new_department else None,
+            "effective_date": self.effective_date.isoformat() if self.effective_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
+            "reason": self.reason,
+            "remarks": self.remarks,
+            "changed_by_id": self.changed_by_id,
+            "changed_by_name": self.changed_by.full_name if self.changed_by else None,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ============================================================
+# DESIGNATION CHANGE HISTORY
+# ============================================================
+class EmployeeDesignationHistory(DictMappingMixin, db.Model):
+    """Designation change history with effective dates and optional salary linkage."""
+
+    __tablename__ = "employee_designation_history"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"), nullable=True)
+    new_designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"), nullable=False)
+    effective_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=True)
+    reason = db.Column(db.Text, nullable=True)
+    remarks = db.Column(db.Text, nullable=True)
+    approved_by_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    salary_revision_id = db.Column(db.Integer, db.ForeignKey("employee_salary_structures.id"), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    employee = db.relationship("Employee", foreign_keys=[employee_id], back_populates="designation_history")
+    previous_designation = db.relationship("Designation", foreign_keys=[previous_designation_id])
+    new_designation = db.relationship("Designation", foreign_keys=[new_designation_id])
+    approved_by = db.relationship("Employee", foreign_keys=[approved_by_id])
+    salary_revision = db.relationship("EmployeeSalaryStructure", foreign_keys=[salary_revision_id])
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "previous_designation_id": self.previous_designation_id,
+            "previous_designation_name": self.previous_designation.name if self.previous_designation else None,
+            "new_designation_id": self.new_designation_id,
+            "new_designation_name": self.new_designation.name if self.new_designation else None,
+            "effective_date": self.effective_date.isoformat() if self.effective_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
+            "reason": self.reason,
+            "remarks": self.remarks,
+            "approved_by_id": self.approved_by_id,
+            "approved_by_name": self.approved_by.full_name if self.approved_by else None,
+            "salary_revision_id": self.salary_revision_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ============================================================
+# REPORTING MANAGER HISTORY
+# ============================================================
+class EmployeeManagerHistory(DictMappingMixin, db.Model):
+    """Reporting manager change history."""
+
+    __tablename__ = "employee_manager_history"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_manager_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    new_manager_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    effective_date = db.Column(db.Date, nullable=False)
+    reason = db.Column(db.Text, nullable=True)
+    remarks = db.Column(db.Text, nullable=True)
+    changed_by_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    employee = db.relationship("Employee", foreign_keys=[employee_id], back_populates="manager_history")
+    previous_manager = db.relationship("Employee", foreign_keys=[previous_manager_id])
+    new_manager = db.relationship("Employee", foreign_keys=[new_manager_id])
+    changed_by = db.relationship("Employee", foreign_keys=[changed_by_id])
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "previous_manager_id": self.previous_manager_id,
+            "previous_manager_name": self.previous_manager.full_name if self.previous_manager else None,
+            "new_manager_id": self.new_manager_id,
+            "new_manager_name": self.new_manager.full_name if self.new_manager else None,
+            "effective_date": self.effective_date.isoformat() if self.effective_date else None,
+            "reason": self.reason,
+            "remarks": self.remarks,
+            "changed_by_id": self.changed_by_id,
+            "changed_by_name": self.changed_by.full_name if self.changed_by else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ============================================================
+# EMPLOYEE STATUS HISTORY
+# ============================================================
+class EmployeeStatusHistory(DictMappingMixin, db.Model):
+    """Employment status transitions (active, probation, confirmed, resigned, terminated, etc.)."""
+
+    __tablename__ = "employee_status_history"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_status = db.Column(db.String(30), nullable=True)
+    new_status = db.Column(db.String(30), nullable=False)
+    effective_date = db.Column(db.Date, nullable=False)
+    reason = db.Column(db.Text, nullable=True)
+    remarks = db.Column(db.Text, nullable=True)
+    changed_by_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    employee = db.relationship("Employee", foreign_keys=[employee_id], back_populates="status_history")
+    changed_by = db.relationship("Employee", foreign_keys=[changed_by_id])
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "previous_status": self.previous_status,
+            "new_status": self.new_status,
+            "effective_date": self.effective_date.isoformat() if self.effective_date else None,
+            "reason": self.reason,
+            "remarks": self.remarks,
+            "changed_by_id": self.changed_by_id,
+            "changed_by_name": self.changed_by.full_name if self.changed_by else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ============================================================
+# PROMOTION HISTORY FOUNDATION
+# ============================================================
+class EmployeePromotion(DictMappingMixin, db.Model):
+    """Promotion records laying the foundation for career & appraisal management."""
+
+    __tablename__ = "employee_promotions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"), nullable=True)
+    new_designation_id = db.Column(db.Integer, db.ForeignKey("designations.id"), nullable=False)
+    previous_grade_id = db.Column(db.Integer, db.ForeignKey("job_grades.id"), nullable=True)
+    new_grade_id = db.Column(db.Integer, db.ForeignKey("job_grades.id"), nullable=True)
+    previous_salary_structure_id = db.Column(db.Integer, db.ForeignKey("employee_salary_structures.id"), nullable=True)
+    new_salary_structure_id = db.Column(db.Integer, db.ForeignKey("employee_salary_structures.id"), nullable=True)
+    new_basic_salary = db.Column(db.Numeric(10, 2), nullable=True)
+    effective_date = db.Column(db.Date, nullable=False)
+    reason = db.Column(db.Text, nullable=True)
+    remarks = db.Column(db.Text, nullable=True)
+    approved_by_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    status = db.Column(db.String(20), default="approved", nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    employee = db.relationship("Employee", foreign_keys=[employee_id], back_populates="promotions")
+    previous_designation = db.relationship("Designation", foreign_keys=[previous_designation_id])
+    new_designation = db.relationship("Designation", foreign_keys=[new_designation_id])
+    previous_grade = db.relationship("JobGrade", foreign_keys=[previous_grade_id])
+    new_grade = db.relationship("JobGrade", foreign_keys=[new_grade_id])
+    approved_by = db.relationship("Employee", foreign_keys=[approved_by_id])
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "previous_designation_id": self.previous_designation_id,
+            "previous_designation_name": self.previous_designation.name if self.previous_designation else None,
+            "new_designation_id": self.new_designation_id,
+            "new_designation_name": self.new_designation.name if self.new_designation else None,
+            "previous_grade_id": self.previous_grade_id,
+            "previous_grade_name": self.previous_grade.name if self.previous_grade else None,
+            "new_grade_id": self.new_grade_id,
+            "new_grade_name": self.new_grade.name if self.new_grade else None,
+            "previous_salary_structure_id": self.previous_salary_structure_id,
+            "new_salary_structure_id": self.new_salary_structure_id,
+            "new_basic_salary": _dec(self.new_basic_salary),
+            "effective_date": self.effective_date.isoformat() if self.effective_date else None,
+            "reason": self.reason,
+            "remarks": self.remarks,
+            "approved_by_id": self.approved_by_id,
+            "approved_by_name": self.approved_by.full_name if self.approved_by else None,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ============================================================
+# UNIFIED EMPLOYEE TIMELINE
+# ============================================================
+class EmployeeTimelineEvent(DictMappingMixin, db.Model):
+    """Unified chronological lifecycle timeline events for Employee 360 view."""
+
+    __tablename__ = "employee_timeline_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = db.Column(db.String(50), nullable=False, index=True)
+    title = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    actor_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=True)
+    actor_name = db.Column(db.String(120), nullable=True)
+    previous_value = db.Column(db.Text, nullable=True)
+    new_value = db.Column(db.Text, nullable=True)
+    reason = db.Column(db.Text, nullable=True)
+    reference_entity_type = db.Column(db.String(50), nullable=True)
+    reference_entity_id = db.Column(db.Integer, nullable=True)
+    event_time = db.Column(db.DateTime(timezone=True), default=_utcnow, nullable=False, index=True)
+    metadata_json = db.Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    employee = db.relationship("Employee", foreign_keys=[employee_id], back_populates="timeline_events")
+    actor = db.relationship("Employee", foreign_keys=[actor_id])
+
+    __table_args__ = (
+        Index("ix_emp_timeline_lookup", "employee_id", "event_time"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "event_type": self.event_type,
+            "title": self.title,
+            "description": self.description,
+            "actor_id": self.actor_id,
+            "actor_name": self.actor_name or (self.actor.full_name if self.actor else "System"),
+            "previous_value": self.previous_value,
+            "new_value": self.new_value,
+            "reason": self.reason,
+            "reference_entity_type": self.reference_entity_type,
+            "reference_entity_id": self.reference_entity_id,
+            "event_time": self.event_time.isoformat() if self.event_time else None,
+            "metadata": self.metadata_json or {},
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -577,8 +1352,10 @@ class LeaveType(db.Model):
     __tablename__ = "leave_types"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     name = db.Column(db.String(100), nullable=False)
-    code = db.Column(db.String(20), unique=True, nullable=False)
+    code = db.Column(db.String(20), nullable=False)
     description = db.Column(db.Text, nullable=True)
     paid = db.Column(db.Boolean, default=True, nullable=False)
     max_days_per_year = db.Column(db.Integer, default=0, nullable=False)
@@ -606,6 +1383,7 @@ class LeaveType(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "name": self.name,
             "code": self.code,
             "description": self.description,
@@ -628,6 +1406,8 @@ class EmployeeLeaveBalance(db.Model):
     __tablename__ = "employee_leave_balances"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     leave_type_id = db.Column(db.Integer, db.ForeignKey("leave_types.id"), nullable=False)
     year = db.Column(db.Integer, nullable=False)
@@ -657,6 +1437,7 @@ class EmployeeLeaveBalance(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "leave_type_id": self.leave_type_id,
             "leave_type_name": self.leave_type.name if self.leave_type else None,
@@ -680,6 +1461,8 @@ class LeaveRequest(db.Model):
     __tablename__ = "leave_requests"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     leave_type_id = db.Column(db.Integer, db.ForeignKey("leave_types.id"), nullable=False)
     start_date = db.Column(db.Date, nullable=False)
@@ -713,6 +1496,7 @@ class LeaveRequest(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "employee_name": self.employee.full_name if self.employee else None,
             "leave_type_id": self.leave_type_id,
@@ -742,8 +1526,10 @@ class Shift(db.Model):
     __tablename__ = "shifts"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     name = db.Column(db.String(100), nullable=False)
-    code = db.Column(db.String(20), unique=True, nullable=False)
+    code = db.Column(db.String(20), nullable=False)
     start_time = db.Column(db.String(5), nullable=False)       # HH:MM
     end_time = db.Column(db.String(5), nullable=False)         # HH:MM
     break_minutes = db.Column(db.Integer, default=0, nullable=False)
@@ -774,6 +1560,7 @@ class Shift(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "name": self.name,
             "code": self.code,
             "start_time": self.start_time,
@@ -798,6 +1585,8 @@ class EmployeeShift(db.Model):
     __tablename__ = "employee_shifts"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     shift_id = db.Column(db.Integer, db.ForeignKey("shifts.id"), nullable=False)
     effective_from = db.Column(db.Date, nullable=False)
@@ -811,6 +1600,7 @@ class EmployeeShift(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "shift_id": self.shift_id,
             "shift_name": self.shift.name if self.shift else None,
@@ -832,6 +1622,8 @@ class OvertimeRecord(db.Model):
     __tablename__ = "overtime_records"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     # Optional link to teacher_attendance row that triggered this OT
     attendance_id = db.Column(
@@ -873,6 +1665,7 @@ class OvertimeRecord(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "employee_name": self.employee.full_name if self.employee else None,
             "attendance_id": self.attendance_id,
@@ -900,6 +1693,8 @@ class EmployeeBonus(db.Model):
     __tablename__ = "employee_bonuses"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     payroll_period_id = db.Column(
         db.Integer, db.ForeignKey("payroll_periods.id"), nullable=True
@@ -927,6 +1722,7 @@ class EmployeeBonus(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "employee_name": self.employee.full_name if self.employee else None,
             "payroll_period_id": self.payroll_period_id,
@@ -949,6 +1745,8 @@ class EmployeeLoan(db.Model):
     __tablename__ = "employee_loans"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     loan_type = db.Column(db.String(30), nullable=False)
     principal_amount = db.Column(db.Numeric(10, 2), nullable=False)
@@ -986,6 +1784,7 @@ class EmployeeLoan(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "employee_name": self.employee.full_name if self.employee else None,
             "loan_type": self.loan_type,
@@ -1009,6 +1808,8 @@ class LoanRepayment(db.Model):
     __tablename__ = "loan_repayments"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     loan_id = db.Column(db.Integer, db.ForeignKey("employee_loans.id"), nullable=False)
     payroll_record_id = db.Column(
         db.Integer, db.ForeignKey("payroll_records.id"), nullable=True
@@ -1030,6 +1831,7 @@ class LoanRepayment(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "loan_id": self.loan_id,
             "payroll_record_id": self.payroll_record_id,
             "amount": _dec(self.amount),
@@ -1048,6 +1850,8 @@ class Reimbursement(db.Model):
     __tablename__ = "reimbursements"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
     reimbursement_type = db.Column(db.String(50), nullable=False)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
@@ -1080,6 +1884,7 @@ class Reimbursement(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "employee_id": self.employee_id,
             "employee_name": self.employee.full_name if self.employee else None,
             "reimbursement_type": self.reimbursement_type,
@@ -1109,6 +1914,8 @@ class PayrollPeriod(db.Model):
     __tablename__ = "payroll_periods"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     period_name = db.Column(db.String(100), nullable=False)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
@@ -1143,6 +1950,7 @@ class PayrollPeriod(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "period_name": self.period_name,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
@@ -1171,6 +1979,8 @@ class PayrollRecord(db.Model):
     __tablename__ = "payroll_records"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     payroll_period_id = db.Column(
         db.Integer, db.ForeignKey("payroll_periods.id"), nullable=False
     )
@@ -1234,6 +2044,7 @@ class PayrollRecord(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "payroll_period_id": self.payroll_period_id,
             "employee_id": self.employee_id,
             "employee_name": self.employee.full_name if self.employee else None,
@@ -1272,6 +2083,8 @@ class PayrollAttendanceSummary(db.Model):
     __tablename__ = "payroll_attendance_summaries"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     payroll_record_id = db.Column(
         db.Integer, db.ForeignKey("payroll_records.id"), nullable=False, unique=True
     )
@@ -1302,6 +2115,7 @@ class PayrollAttendanceSummary(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "payroll_record_id": self.payroll_record_id,
             "employee_id": self.employee_id,
             "total_calendar_days": self.total_calendar_days,
@@ -1331,6 +2145,8 @@ class PayrollEarning(db.Model):
     __tablename__ = "payroll_earnings"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     payroll_record_id = db.Column(
         db.Integer, db.ForeignKey("payroll_records.id"), nullable=False
     )
@@ -1352,6 +2168,7 @@ class PayrollEarning(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "payroll_record_id": self.payroll_record_id,
             "component_id": self.component_id,
             "component_name_snapshot": self.component_name_snapshot,
@@ -1369,6 +2186,8 @@ class PayrollDeduction(db.Model):
     __tablename__ = "payroll_deductions"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     payroll_record_id = db.Column(
         db.Integer, db.ForeignKey("payroll_records.id"), nullable=False
     )
@@ -1390,6 +2209,7 @@ class PayrollDeduction(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "payroll_record_id": self.payroll_record_id,
             "component_id": self.component_id,
             "deduction_name_snapshot": self.deduction_name_snapshot,
@@ -1407,10 +2227,12 @@ class Payslip(db.Model):
     __tablename__ = "payslips"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     payroll_record_id = db.Column(
         db.Integer, db.ForeignKey("payroll_records.id"), nullable=False, unique=True
     )
-    payslip_number = db.Column(db.String(50), unique=True, nullable=False)
+    payslip_number = db.Column(db.String(50), nullable=False)
     generated_at = db.Column(
         db.DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1430,6 +2252,7 @@ class Payslip(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "payroll_record_id": self.payroll_record_id,
             "payslip_number": self.payslip_number,
             "generated_at": self.generated_at.isoformat() if self.generated_at else None,
@@ -1452,6 +2275,8 @@ class HRAuditLog(db.Model):
     __tablename__ = "hr_audit_logs"
 
     id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
     entity_type = db.Column(db.String(50), nullable=False, index=True)
     entity_id = db.Column(db.Integer, nullable=False, index=True)
     action = db.Column(db.String(50), nullable=False)
@@ -1470,7 +2295,8 @@ class HRAuditLog(db.Model):
     __table_args__ = (
         CheckConstraint(
             "action IN ('create', 'update', 'delete', 'approve', 'reject', "
-            "'process', 'finalize')",
+            "'process', 'finalize', 'department_transfer', 'designation_change', "
+            "'manager_change', 'status_change', 'promotion', 'transfer')",
             name="ck_hr_audit_action"
         ),
         Index("ix_hr_audit_entity", "entity_type", "entity_id"),
@@ -1479,6 +2305,7 @@ class HRAuditLog(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "entity_type": self.entity_type,
             "entity_id": self.entity_id,
             "action": self.action,
@@ -1489,3 +2316,51 @@ class HRAuditLog(db.Model):
             "new_values": self.new_values,
             "reason": self.reason,
         }
+
+
+# ============================================================
+# EMPLOYEE DOCUMENTS
+# ============================================================
+class EmployeeDocument(DictMappingMixin, db.Model):
+    """Secure document storage metadata for employee files (contracts, IDs, degrees, etc.)."""
+
+    __tablename__ = "employee_documents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    school_id = db.Column(db.Integer, db.ForeignKey("schools.id"), nullable=True, index=True)
+    school = db.relationship("School")
+    employee_id = db.Column(
+        db.Integer, db.ForeignKey("employees.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    document_type = db.Column(db.String(60), nullable=False)  # appointment_letter, identity, qualification, agreement, other
+    title = db.Column(db.String(150), nullable=False)
+    file_path = db.Column(db.String(255), nullable=False)
+    file_name = db.Column(db.String(255), nullable=True)
+    file_size = db.Column(db.Integer, nullable=True)
+    mime_type = db.Column(db.String(100), nullable=True)
+    uploaded_by = db.Column(db.String(80), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = db.Column(
+        db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    employee = db.relationship("Employee", back_populates="documents")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "school_id": self.school_id,
+            "employee_id": self.employee_id,
+            "document_type": self.document_type,
+            "title": self.title,
+            "file_name": self.file_name,
+            "file_size": self.file_size,
+            "mime_type": self.mime_type,
+            "file_path": self.file_path,
+            "uploaded_by": self.uploaded_by,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+

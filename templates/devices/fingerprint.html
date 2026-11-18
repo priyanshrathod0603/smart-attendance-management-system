@@ -1,0 +1,1122 @@
+{% extends "base.html" %}
+{% block title %}Fingerprint Device - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
+
+{% block crumbs %}
+  <i data-lucide="fingerprint"></i>
+  <span>Devices</span>
+  <i data-lucide="chevron-right" style="width:14px;height:14px;opacity:0.5;"></i>
+  <span>Fingerprint Device</span>
+{% endblock %}
+
+{% block content %}
+<div class="fingerprint-page" style="display: flex; flex-direction: column; gap: 20px;">
+
+  <!-- ========================================================================= -->
+  <!-- 1. Primary Device Header Card -->
+  <!-- ========================================================================= -->
+  <section class="card glass" style="padding: 24px;">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 6px; flex-wrap: wrap;">
+          <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0; color: var(--text-primary);">Fingerprint Device</h1>
+          <span id="device-status-badge" class="badge warn" style="font-size: 0.85rem; padding: 4px 10px;">
+            <i data-lucide="loader-2" class="spin" style="width:14px;height:14px;"></i> Initializing...
+          </span>
+          <span id="adapter-mock-badge" class="badge" style="display:none; background:#fef3c7; color:#92400e; border:1px solid #fde68a;">
+            <i data-lucide="alert-triangle" style="width:14px;height:14px;"></i> SIMULATOR / MOCK
+          </span>
+        </div>
+        <div class="muted small" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span style="font-weight: 600; color: var(--text-primary);" id="hdr-device-model">Team Office Z305 (variant/firmware unverified)</span>
+          <span>&bull;</span>
+          <span id="hdr-endpoint-pill" style="font-family: monospace; font-weight: 600;">IP/port not configured</span>
+          <span>&bull;</span>
+          <span id="hdr-enrolled-summary">-- App Enrollment Flags</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <button id="btn-test-conn" class="btn-secondary" type="button" title="Perform live network socket test">
+          <i data-lucide="activity"></i> Test Connection
+        </button>
+        <button id="btn-connect-dev" class="btn-primary" type="button">
+          <i data-lucide="plug"></i> Connect
+        </button>
+        <button id="btn-refresh-status" class="btn-secondary" type="button" title="Refresh Live State">
+          <i data-lucide="refresh-cw"></i> Refresh
+        </button>
+      </div>
+    </div>
+
+    <div role="status" class="muted small" style="margin-top: 12px; padding: 10px 12px; border-left: 3px solid #d97706; background: rgba(217, 119, 6, 0.08);">
+      Fingerprint enrollment and direct TCP attendance retrieval still require the vendor-confirmed SDK/protocol. Attendance exports can be imported here or synchronized from a watched folder; this does not verify enrollment or provide real-time device sync.
+    </div>
+    <div id="z305-capabilities" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:12px;">
+      <div data-capability="network_connected" class="badge warn">Network Connected: Unknown</div>
+      <div data-capability="protocol_verified" class="badge warn">Protocol Verified: No</div>
+      <div data-capability="device_authenticated" class="badge warn">Device Authenticated: No</div>
+      <div data-capability="enrollment_supported" class="badge warn">Enrollment Supported: No</div>
+      <div data-capability="attendance_sync_working" class="badge warn">Attendance Sync Working: No</div>
+    </div>
+    <div id="z305-port-explanation" class="muted small" style="margin-top:8px;">The configured TCP port is only a reachable socket until Team Office confirms it is the Z305 communication service. Port 5005 is not identified as a Z305 SDK/API port in the public vendor material reviewed.</div>
+
+    <!-- Inline Connection Test Result Box -->
+    <div id="conn-test-result-box" style="display: none; margin-top: 18px; padding: 14px 18px; border-radius: var(--radius-sm); border-left: 4px solid var(--accent); background: rgba(0, 122, 255, 0.05);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="display: flex; gap: 12px; align-items: flex-start;">
+          <div id="conn-test-icon" style="font-size: 1.25rem; line-height: 1;"></div>
+          <div>
+            <div id="conn-test-title" style="font-weight: 700; font-size: 0.95rem; margin-bottom: 3px;">Connection Test</div>
+            <div id="conn-test-msg" style="font-size: 0.85rem; color: var(--text-secondary);"></div>
+            <div id="conn-test-metrics" style="margin-top: 6px; font-size: 0.8rem; font-family: monospace; display: flex; gap: 14px; color: var(--text-tertiary); flex-wrap: wrap;"></div>
+          </div>
+        </div>
+        <button id="btn-close-conn-test" type="button" style="background:none; border:none; cursor:pointer; font-size:1.2rem; color:var(--text-tertiary); line-height:1;">&times;</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card glass" style="padding: 24px;">
+    <h2 style="font-size:1.15rem;font-weight:700;margin:0 0 6px;">Import Device Attendance Export</h2>
+    <p class="muted small" style="margin:0 0 14px;">Upload a CSV, TSV, TXT, or XLSX export with a recognized device user ID and timestamp. The configured device ID is used; mapped punches are deduplicated and sent to AttendanceOS attendance.</p>
+    <form id="attendance-import-form" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input id="attendance-import-file" type="file" accept=".csv,.tsv,.txt,.xlsx" required />
+      <button id="btn-import-attendance" class="btn-primary" type="submit"><i data-lucide="upload"></i> Import Attendance</button>
+    </form>
+    <pre id="attendance-import-result" role="status" class="muted small" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere;margin:14px 0 0;padding:12px;background:rgba(127,127,127,.08);border-radius:6px;"></pre>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- 2. Device Configuration Form -->
+  <!-- ========================================================================= -->
+  <section class="card glass" style="padding: 24px;">
+    <div class="card-head" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div>
+        <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0;">
+          <i data-lucide="sliders" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i> Device Configuration
+        </h2>
+        <p class="muted small" style="margin: 2px 0 0 0;">Hardware terminal parameters and communication credentials</p>
+      </div>
+      <div id="config-toast-msg" style="display: none; font-size: 0.85rem; padding: 4px 10px; border-radius: 4px;"></div>
+    </div>
+
+    <form id="config-form" novalidate style="display: flex; flex-direction: column; gap: 18px;">
+      
+      <!-- Group 1: Device Identification -->
+      <fieldset style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin: 0;">
+        <legend style="font-size: 0.85rem; font-weight: 700; padding: 0 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">1. Device Identification</legend>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Device Name <span style="color:var(--danger);">*</span></label>
+            <input type="text" id="cfg-name" class="input" style="width: 100%;" placeholder="e.g. Main Entrance Team Office Z305" required />
+            <div id="err-cfg-name" class="small" style="color:var(--danger); display:none; margin-top:3px;">Device Name is required.</div>
+          </div>
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Device ID <span style="color:var(--danger);">*</span></label>
+            <input type="text" id="cfg-device-id" class="input" style="width: 100%;" placeholder="Unique configured device ID" required />
+            <div id="err-cfg-device-id" class="small" style="color:var(--danger); display:none; margin-top:3px;">Device ID is required.</div>
+          </div>
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Device Model</label>
+            <input type="text" id="cfg-model" class="input" style="width: 100%;" value="Team Office Z305 (variant/firmware unverified)" />
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- Group 2: Network & Protocol -->
+      <fieldset style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin: 0;">
+        <legend style="font-size: 0.85rem; font-weight: 700; padding: 0 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">2. Network &amp; Protocol</legend>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">IP Address / Host <span style="color:var(--danger);">*</span></label>
+            <input type="text" id="cfg-ip" class="input" style="width: 100%;" placeholder="Enter terminal IP address" required />
+            <div id="err-cfg-ip" class="small" style="color:var(--danger); display:none; margin-top:3px;">Please provide a valid IP address or hostname.</div>
+          </div>
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Port <span style="color:var(--danger);">*</span></label>
+            <input type="number" id="cfg-port" class="input" style="width: 100%;" placeholder="Configured TCP endpoint (not protocol confirmation)" min="1" max="65535" />
+            <div id="err-cfg-port" class="small" style="color:var(--danger); display:none; margin-top:3px;">Port must be between 1 and 65535.</div>
+          </div>
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Connection Type</label>
+            <select id="cfg-conn-type" class="input" style="width: 100%;">
+              <option value="TCP_IP">TCP/IP (vendor protocol required)</option>
+              <option value="MOCK">Mock Provider (Simulator)</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- Group 3: Security & Connection Settings -->
+      <fieldset style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin: 0;">
+        <legend style="font-size: 0.85rem; font-weight: 700; padding: 0 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">3. Security &amp; Connection</legend>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Communication Key / Device Password</label>
+            <input type="password" id="cfg-comm-key" class="input" style="width: 100%;" placeholder="•••••• (Default: 0)" autocomplete="new-password" />
+            <span class="muted small" style="display:block; margin-top:3px;">Leave blank or default (0) if no device password set.</span>
+          </div>
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Webhook Bearer Token</label>
+            <input type="password" id="cfg-webhook-token" class="input" style="width: 100%;" placeholder="Enter a random secret (at least 32 characters)" autocomplete="new-password" />
+            <span id="cfg-webhook-token-status" class="muted small" style="display:block; margin-top:3px;">No token configured.</span>
+          </div>
+          <div>
+            <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Socket Timeout (Seconds)</label>
+            <input type="number" id="cfg-timeout" class="input" style="width: 100%;" value="5" min="1" max="60" step="0.5" />
+            <div id="err-cfg-timeout" class="small" style="color:var(--danger); display:none; margin-top:3px;">Timeout must be a positive number between 1 and 60.</div>
+          </div>
+        </div>
+      </fieldset>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px;">
+        <button id="btn-save-config" type="submit" class="btn-primary">
+          <i data-lucide="save"></i> Save Configuration
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- 3. Teacher Mapping Table -->
+  <!-- ========================================================================= -->
+  <section class="card glass" style="padding: 24px;">
+    <div class="card-head" style="margin-bottom: 18px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;">
+      <div>
+        <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0;">
+          <i data-lucide="users-2" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i> Teacher Mapping
+        </h2>
+        <p class="muted small" style="margin: 2px 0 0 0;">Map teachers to Team Office Z305 user IDs; enrollment records are not device-confirmed in this build.</p>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <div class="search" style="min-width: 240px;">
+          <i data-lucide="search"></i>
+          <input type="search" id="mapping-search-input" placeholder="Search teacher or ID..." />
+        </div>
+        <button id="btn-map-teacher" class="btn-primary" type="button">
+          <i data-lucide="user-plus"></i> Map Teacher
+        </button>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table id="mappings-table">
+        <thead>
+          <tr>
+            <th>Teacher ID</th>
+            <th>Name</th>
+            <th>Department</th>
+            <th>Device User ID</th>
+            <th>AttendanceOS Enrollment Record</th>
+            <th style="text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="mappings-tbody">
+          <tr><td colspan="6" class="empty">Loading teacher mappings...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- 4. Recent Events Table -->
+  <!-- ========================================================================= -->
+  <section class="card glass" style="padding: 24px;">
+    <div class="card-head" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div>
+        <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0;">
+          <i data-lucide="history" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i> Recent Events
+        </h2>
+        <p class="muted small" style="margin: 2px 0 0 0;">Biometric verification log and hardware event records</p>
+      </div>
+
+      <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <label style="font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <input type="checkbox" id="auto-refresh-events" /> Auto-refresh (30s)
+        </label>
+        <button id="btn-refresh-events" class="btn-secondary small" type="button">
+          <i data-lucide="refresh-cw"></i> Refresh Events
+        </button>
+      </div>
+    </div>
+
+    <div class="table-scroll" style="max-height: 360px; overflow-y: auto;">
+      <table id="events-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Teacher</th>
+            <th>Event</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody id="events-tbody">
+          <tr><td colspan="4" class="empty">Loading recent events...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- 5. Advanced Device Information ▾ (Collapsible Accordion) -->
+  <!-- ========================================================================= -->
+  <details class="card glass" style="padding: 20px; cursor: pointer;">
+    <summary style="font-size: 1rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between; user-select: none;">
+      <span style="display: flex; align-items: center; gap: 8px;">
+        <i data-lucide="cpu" style="width:18px;height:18px;"></i> Advanced Device Information &amp; Diagnostics
+      </span>
+      <span class="muted small">Click to toggle ▾</span>
+    </summary>
+    
+    <div style="margin-top: 18px; display: flex; flex-direction: column; gap: 16px; cursor: default;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; font-size: 0.85rem;">
+        <div style="background: var(--surface); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <div class="muted small">Firmware Version</div>
+          <div style="font-weight: 700; margin-top: 2px;" id="info-firmware">Not Available</div>
+        </div>
+        <div style="background: var(--surface); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <div class="muted small">Serial Number</div>
+          <div style="font-weight: 700; margin-top: 2px;" id="info-serial">Not Available</div>
+        </div>
+        <div style="background: var(--surface); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <div class="muted small">Biometric Storage</div>
+          <div style="font-weight: 700; margin-top: 2px;">On-Device Flash (Templates Stored Locally)</div>
+        </div>
+        <div style="background: var(--surface); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <div class="muted small">Biometric Isolation</div>
+          <div style="font-weight: 700; margin-top: 2px; color: var(--success);">Zero Raw Biometrics Transferred</div>
+        </div>
+        <div style="background: var(--surface); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <div class="muted small">Last Successful Communication</div>
+          <div style="font-weight: 700; margin-top: 2px;" id="info-last-comm">--</div>
+        </div>
+        <div style="background: var(--surface); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+          <div class="muted small">Driver / SDK Status</div>
+          <div style="font-weight: 700; margin-top: 2px;" id="info-driver-status">Team Office Z305 (protocol unverified)</div>
+        </div>
+      </div>
+
+      <!-- Safe Diagnostics Identity Verification Tool -->
+      <div style="background: var(--surface); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--border); margin-top: 8px;">
+        <h4 style="margin: 0 0 4px 0; font-size: 0.95rem; font-weight: 700;">Diagnostic Identity Verification (Safe Mode)</h4>
+        <p class="muted small" style="margin: 0 0 12px 0;">Test biometric user identity resolution without creating or modifying attendance records.</p>
+        
+        <div style="display: flex; gap: 10px; max-width: 500px; flex-wrap: wrap;">
+          <input type="text" id="test-verify-uid" class="input" style="flex-grow: 1;" placeholder="Device User ID or Teacher ID (e.g. 1001)" />
+          <button id="btn-run-verify-test" class="btn-secondary" type="button" style="white-space: nowrap;">
+            <i data-lucide="check-circle-2"></i> Verify Identity
+          </button>
+        </div>
+        <div id="test-verify-output" style="display: none; margin-top: 10px; padding: 10px; border-radius: 4px; font-size: 0.85rem;"></div>
+      </div>
+    </div>
+  </details>
+
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: Map Teacher Fingerprint -->
+<!-- ========================================================================= -->
+<div id="map-teacher-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document" style="max-width: 480px;">
+    <header class="modal-head">
+      <h3 id="map-modal-title">Map Teacher to Device User ID</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <div class="modal-body">
+      <form id="map-teacher-form" style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">Select Teacher</label>
+          <select id="map-select-teacher" class="input" style="width: 100%;" required>
+            <option value="">-- Choose Teacher --</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="small" style="font-weight: 600; display: block; margin-bottom: 4px;">BioMax Device User ID</label>
+          <input type="text" id="map-input-dev-uid" class="input" style="width: 100%;" placeholder="e.g. 1001" required />
+          <span class="muted small" style="display:block; margin-top:4px;">Unique ID registered on the physical terminal.</span>
+        </div>
+      </form>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn-secondary" data-close="1" type="button">Cancel</button>
+      <button id="btn-save-mapping" class="btn-primary" type="button">Save Mapping</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: Enrollment Workflow -->
+<!-- ========================================================================= -->
+<div id="enroll-modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-panel" role="document" style="max-width: 480px;">
+    <header class="modal-head">
+      <h3>Fingerprint Enrollment</h3>
+      <button class="modal-x" data-close="1" aria-label="Close">&times;</button>
+    </header>
+    <div class="modal-body">
+      <div style="text-align: center; padding: 12px 0;">
+        <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--primary-subtle,#e0e7ff); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 8px;">
+          <i data-lucide="fingerprint" style="width: 32px; height: 32px;"></i>
+        </div>
+        <h4 id="enroll-teacher-name" style="margin: 0 0 2px 0; font-size: 1.1rem;">Teacher Name</h4>
+        <p id="enroll-teacher-meta" class="muted small" style="margin: 0;">Teacher ID: T001 | Device User ID: 1001</p>
+      </div>
+
+      <div style="background: var(--surface); border-radius: var(--radius-sm); padding: 12px; font-size: 0.85rem; line-height: 1.4; margin-bottom: 12px; border: 1px solid var(--border);">
+        <strong>Instructions:</strong>
+        <ol style="margin: 6px 0 0 16px; padding: 0;">
+          <li>Click <strong>Start Enrollment</strong> below.</li>
+          <li>Have the faculty member place their finger on the terminal scanner 3 times upon beep.</li>
+          <li>Biometric templates are stored securely inside the hardware unit.</li>
+        </ol>
+      </div>
+
+      <div id="enroll-status-feedback" style="display:none; padding: 10px; border-radius: 4px; font-size: 0.85rem;"></div>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn-secondary" data-close="1" type="button">Close</button>
+      <button id="btn-start-enrollment" class="btn-primary" type="button">
+        <i data-lucide="play"></i> Start Enrollment
+      </button>
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+
+  const CSRF_HEADER = { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "" };
+  let teachersCache = [];
+  let currentEnrollingTeacher = null;
+  let eventPollTimer = null;
+
+  // In-flight request guards
+  let isStatusLoading = false;
+  let isEventsLoading = false;
+  let isMappingsLoading = false;
+  let isTestingConn = false;
+  let isSavingConfig = false;
+  let isVerifying = false;
+  let isImportingAttendance = false;
+
+  function $(sel) { return document.querySelector(sel); }
+  function $$(sel) { return document.querySelectorAll(sel); }
+
+  function escapeHtml(s) {
+    if (s == null) return "";
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function renderZ305Capabilities(adapter) {
+    const labels = {
+      network_connected: "Network Connected",
+      protocol_verified: "Protocol Verified",
+      device_authenticated: "Device Authenticated",
+      enrollment_supported: "Enrollment Supported",
+      attendance_sync_working: "Attendance Sync Working",
+    };
+    Object.entries(labels).forEach(([key, label]) => {
+      const node = document.querySelector(`[data-capability="${key}"]`);
+      if (!node) return;
+      if (adapter.is_mock) {
+        node.className = "badge warn";
+        node.textContent = `${label}: Simulated (not hardware)`;
+        return;
+      }
+      const value = Boolean(adapter[key]);
+      node.className = `badge ${value ? "ok" : key === "network_connected" ? "err" : "warn"}`;
+      node.textContent = `${label}: ${value ? "Yes" : "No"}`;
+    });
+  }
+
+  async function apiReq(url, options = {}) {
+    options.headers = {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+      ...CSRF_HEADER,
+    };
+    const res = await fetch(url, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
+    }
+    return data;
+  }
+
+  async function importAttendanceFile(e) {
+    e.preventDefault();
+    if (isImportingAttendance) return;
+    const file = $("#attendance-import-file")?.files?.[0];
+    const out = $("#attendance-import-result");
+    const button = $("#btn-import-attendance");
+    if (!file) return;
+    isImportingAttendance = true;
+    button.disabled = true;
+    out.style.display = "block";
+    out.textContent = "Importing file...";
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch("/api/devices/fingerprint/import", {
+        method: "POST", headers: CSRF_HEADER, body,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Import failed (${response.status})`);
+      out.textContent = JSON.stringify(data.result || data, null, 2);
+      loadEvents();
+    } catch (err) {
+      out.textContent = `Import failed: ${err.message}`;
+    } finally {
+      isImportingAttendance = false;
+      button.disabled = false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 1. Device Status
+  // -------------------------------------------------------------------------
+  async function loadDeviceStatus() {
+    if (isStatusLoading) return;
+    isStatusLoading = true;
+    try {
+      const data = await apiReq("/api/devices/fingerprint/status");
+      const dev = data.device || {};
+      const adapter = data.adapter_info || {};
+      const stats = data.statistics || {};
+      renderZ305Capabilities(adapter);
+
+      const badge = $("#device-status-badge");
+      const mockBadge = $("#adapter-mock-badge");
+
+      if (adapter.is_mock) {
+        mockBadge.style.display = "inline-flex";
+      } else if (adapter.network_reachable) {
+        badge.className = "badge warn";
+        badge.textContent = "TCP Reachable — Protocol Unverified";
+      } else {
+        mockBadge.style.display = "none";
+      }
+
+      if (adapter.is_mock && adapter.connected) {
+        badge.className = "badge warn";
+        badge.textContent = "Simulator Connected (not hardware)";
+      } else if (adapter.operational) {
+        badge.className = "badge ok";
+        badge.innerHTML = `<i data-lucide="check-circle" style="width:14px;height:14px;"></i> Operational`;
+      } else if (dev.status === "error") {
+        badge.className = "badge err";
+        badge.innerHTML = `<i data-lucide="alert-octagon" style="width:14px;height:14px;"></i> Error`;
+      } else {
+        badge.className = "badge warn";
+        badge.innerHTML = `<i data-lucide="power-off" style="width:14px;height:14px;"></i> Disconnected`;
+      }
+
+      const host = dev.ip_address || "IP not configured";
+      const port = dev.port || "port not configured";
+      $("#hdr-endpoint-pill").textContent = `${host} : ${port}`;
+      $("#hdr-device-model").textContent = dev.model || "Team Office Z305 (variant/firmware unverified)";
+      const enrollmentFlags = stats.application_enrollment_flags_count ?? stats.enrolled_teachers_count ?? 0;
+      $("#hdr-enrolled-summary").textContent = `${enrollmentFlags} App Enrollment Flags (not device-confirmed)`;
+
+      $("#info-firmware").textContent = adapter.firmware_version || "Not Available";
+      $("#info-serial").textContent = adapter.serial_number || "Not Available";
+      $("#info-last-comm").textContent = dev.last_connected_at ? new Date(dev.last_connected_at).toLocaleString() : "Never";
+
+      // Form fill if fields not modified
+      if (!$("#cfg-name").value) $("#cfg-name").value = dev.name || "";
+      if (!$("#cfg-device-id").value) $("#cfg-device-id").value = dev.device_id || "";
+      if (!$("#cfg-model").value) $("#cfg-model").value = dev.model || "Team Office Z305 (variant/firmware unverified)";
+      if (!$("#cfg-ip").value) $("#cfg-ip").value = dev.ip_address || "";
+      if (!$("#cfg-port").value) $("#cfg-port").value = dev.port || "";
+      if (!$("#cfg-timeout").value) $("#cfg-timeout").value = dev.timeout_seconds || 5;
+      $("#cfg-conn-type").value = dev.connection_type || "TCP_IP";
+      $("#cfg-webhook-token-status").textContent = dev.has_webhook_token
+        ? "A webhook token is set; enter a new value only to rotate it."
+        : "No token configured.";
+
+      if (window.lucide) lucide.createIcons();
+    } catch (err) {
+      console.warn("Failed to load device status:", err);
+    } finally {
+      isStatusLoading = false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 2. Manual Connection Test
+  // -------------------------------------------------------------------------
+  async function runConnectionTest() {
+    if (isTestingConn) return;
+    isTestingConn = true;
+    const btn = $("#btn-test-conn");
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="spin"></i> Testing...`;
+    if (window.lucide) lucide.createIcons();
+
+    const box = $("#conn-test-result-box");
+    box.style.display = "none";
+
+    try {
+      const res = await apiReq("/api/devices/fingerprint/test-connection", { method: "POST" });
+      box.style.display = "block";
+      const isOk = res.ok;
+      const networkOnly = isOk && res.device_info && !res.device_info.protocol_verified;
+
+      box.style.borderLeftColor = isOk ? (networkOnly ? "var(--warning)" : "var(--success)") : "var(--danger)";
+      box.style.background = isOk ? "rgba(255, 193, 7, 0.08)" : "rgba(255, 59, 48, 0.08)";
+      $("#conn-test-icon").innerHTML = isOk ? (networkOnly ? "⚠️" : "✅") : "❌";
+      $("#conn-test-title").textContent = isOk
+        ? (networkOnly ? "Network Connected — Integration Unverified" : "Connection Test: Operational")
+        : "Connection Test: FAILED";
+      $("#conn-test-title").style.color = isOk ? (networkOnly ? "var(--warning)" : "var(--success)") : "var(--danger)";
+      $("#conn-test-msg").textContent = res.message || (isOk ? "TCP socket reachable; device protocol not verified." : "Device unreachable.");
+
+      $("#conn-test-metrics").innerHTML = `
+        <span><strong>Latency:</strong> ${res.latency_ms != null ? res.latency_ms + ' ms' : 'N/A'}</span>
+        <span><strong>Target:</strong> ${res.host || 'not configured'}:${res.port || 'not configured'}</span>
+        <span><strong>Communication:</strong> ${res.communication || (isOk ? 'TCP_REACHABLE' : 'FAILED')}</span>
+      `;
+
+      loadDeviceStatus();
+    } catch (err) {
+      box.style.display = "block";
+      box.style.borderLeftColor = "var(--danger)";
+      box.style.background = "rgba(255, 59, 48, 0.08)";
+      $("#conn-test-icon").innerHTML = "❌";
+      $("#conn-test-title").textContent = "Connection Test Error";
+      $("#conn-test-title").style.color = "var(--danger)";
+      $("#conn-test-msg").textContent = err.message;
+      $("#conn-test-metrics").innerHTML = `<span><strong>Error:</strong> Network / Socket Exception</span>`;
+    } finally {
+      isTestingConn = false;
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 3. Connect Device Action
+  // -------------------------------------------------------------------------
+  async function connectDevice() {
+    const btn = $("#btn-connect-dev");
+    if (btn.disabled) return;
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="spin"></i> Connecting...`;
+    if (window.lucide) lucide.createIcons();
+
+    try {
+      const res = await apiReq("/api/devices/fingerprint/connect", { method: "POST" });
+      showToast(res.message || "Connected to device.", true);
+      loadDeviceStatus();
+    } catch (err) {
+      showToast(`Connection failed: ${err.message}`, false);
+      loadDeviceStatus();
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+
+  function showToast(msg, ok) {
+    const toast = $("#config-toast-msg");
+    if (!toast) return;
+    toast.style.display = "inline-block";
+    toast.style.background = ok ? "rgba(52, 199, 89, 0.15)" : "rgba(255, 59, 48, 0.15)";
+    toast.style.color = ok ? "var(--success)" : "var(--danger)";
+    toast.style.border = `1px solid ${ok ? "var(--success)" : "var(--danger)"}`;
+    toast.textContent = msg;
+    setTimeout(() => { toast.style.display = "none"; }, 4000);
+  }
+
+  // -------------------------------------------------------------------------
+  // 4. Save Configuration (Single Request UX + Inline Validation)
+  // -------------------------------------------------------------------------
+  async function handleSaveConfig(e) {
+    e.preventDefault();
+    if (isSavingConfig) return;
+
+    // Reset inline validation errors
+    $("#err-cfg-name").style.display = "none";
+    $("#err-cfg-device-id").style.display = "none";
+    $("#err-cfg-ip").style.display = "none";
+    $("#err-cfg-port").style.display = "none";
+    $("#err-cfg-timeout").style.display = "none";
+
+    const name = $("#cfg-name").value.trim();
+    const deviceId = $("#cfg-device-id").value.trim();
+    const model = $("#cfg-model").value.trim();
+    const ip = $("#cfg-ip").value.trim();
+    const portText = $("#cfg-port").value.trim();
+    const port = portText ? parseInt(portText, 10) : null;
+    const timeout = parseFloat($("#cfg-timeout").value);
+    const connType = $("#cfg-conn-type").value;
+    const commKey = $("#cfg-comm-key").value.trim();
+    const webhookToken = $("#cfg-webhook-token").value.trim();
+
+    let hasError = false;
+    if (!name) {
+      $("#err-cfg-name").style.display = "block";
+      hasError = true;
+    }
+    if (!deviceId) {
+      $("#err-cfg-device-id").style.display = "block";
+      hasError = true;
+    }
+    if (!ip) {
+      $("#err-cfg-ip").style.display = "block";
+      hasError = true;
+    }
+    if (portText && (isNaN(port) || port < 1 || port > 65535)) {
+      $("#err-cfg-port").style.display = "block";
+      hasError = true;
+    }
+    if (webhookToken && webhookToken.length < 32) {
+      showToast("Webhook bearer token must be at least 32 characters.", false);
+      hasError = true;
+    }
+    if (isNaN(timeout) || timeout <= 0 || timeout > 60) {
+      $("#err-cfg-timeout").style.display = "block";
+      hasError = true;
+    }
+
+    if (hasError) return;
+
+    isSavingConfig = true;
+    const btn = $("#btn-save-config");
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="spin"></i> Saving...`;
+    if (window.lucide) lucide.createIcons();
+
+    const payload = {
+      name: name,
+      device_id: deviceId,
+      model: model,
+      connection_type: connType,
+      ip_address: ip,
+      port: port,
+      comm_key: commKey,
+      timeout_seconds: timeout,
+    };
+    if (webhookToken) payload.webhook_token = webhookToken;
+
+    try {
+      const res = await apiReq("/api/devices/fingerprint/config", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      showToast(res.message || "Configuration saved successfully.", true);
+      $("#cfg-webhook-token").value = "";
+      loadDeviceStatus();
+    } catch (err) {
+      showToast(`Failed to save: ${err.message}`, false);
+    } finally {
+      isSavingConfig = false;
+      btn.disabled = false;
+      btn.innerHTML = `<i data-lucide="save"></i> Save Configuration`;
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 5. Teacher Mapping Table
+  // -------------------------------------------------------------------------
+  async function loadMappings() {
+    if (isMappingsLoading) return;
+    isMappingsLoading = true;
+    const search = $("#mapping-search-input") ? $("#mapping-search-input").value.trim() : "";
+    const tbody = $("#mappings-tbody");
+
+    try {
+      const data = await apiReq(`/api/devices/fingerprint/mappings?search=${encodeURIComponent(search)}`);
+      teachersCache = data.mappings || [];
+
+      if (!teachersCache.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">No teacher records found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = teachersCache.map(t => {
+        const isEnrolled = Boolean(t.fingerprint_enrolled);
+        const enrollBadge = isEnrolled
+          ? `<span class="badge warn"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> App record only</span>`
+          : `<span class="badge warn"><i data-lucide="x" style="width:12px;height:12px;"></i> Not recorded</span>`;
+
+        return `
+          <tr>
+            <td><strong>${escapeHtml(t.teacher_id)}</strong></td>
+            <td>${escapeHtml(t.name)}</td>
+            <td><small>${escapeHtml(t.department || "General")}</small></td>
+            <td><code>${escapeHtml(t.fingerprint_user_id || "Not mapped")}</code></td>
+            <td>${enrollBadge}</td>
+            <td style="text-align: right; white-space: nowrap;">
+              <button class="btn-primary" style="font-size:0.75rem; padding: 4px 8px;" data-action="enroll" data-id="${t.id}" title="Enroll on Device">
+                <i data-lucide="fingerprint"></i> Enroll
+              </button>
+              <button class="btn-secondary" style="font-size:0.75rem; padding: 4px 8px;" data-action="edit-map" data-id="${t.id}" title="Map User ID">
+                <i data-lucide="edit"></i> Map
+              </button>
+              ${isEnrolled ? `
+                <button class="btn-secondary" style="font-size:0.75rem; padding: 4px 8px; color:var(--danger);" data-action="unenroll" data-id="${t.id}" title="Unenroll from Device">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              ` : ''}
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      if (window.lucide) lucide.createIcons();
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty error">Failed to load mappings: ${escapeHtml(err.message)}</td></tr>`;
+    } finally {
+      isMappingsLoading = false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 6. Recent Events Log Table (Clean 4-column)
+  // -------------------------------------------------------------------------
+  async function loadEvents() {
+    if (isEventsLoading) return;
+    isEventsLoading = true;
+    const tbody = $("#events-tbody");
+    try {
+      const data = await apiReq("/api/devices/fingerprint/events?limit=30");
+      const logs = data.events || [];
+
+      if (!logs.length) {
+        tbody.innerHTML = `<tr><td colspan="4" class="empty">No recent events logged.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = logs.map(ev => {
+        const timeStr = ev.event_time ? new Date(ev.event_time).toLocaleTimeString() : "--";
+        const dateStr = ev.event_time ? new Date(ev.event_time).toLocaleDateString() : "";
+        const isSuccess = ev.result === "success" || ev.result === "inserted" || ev.result === "updated";
+        const resBadge = isSuccess
+          ? `<span class="badge ok">${escapeHtml(ev.result)}</span>`
+          : `<span class="badge ${ev.result === 'rejected' ? 'warn' : 'err'}">${escapeHtml(ev.result)}</span>`;
+
+        return `
+          <tr>
+            <td><small><strong>${escapeHtml(timeStr)}</strong> <span class="muted">${escapeHtml(dateStr)}</span></small></td>
+            <td><strong>${escapeHtml(ev.teacher_id || "N/A")}</strong></td>
+            <td><code>${escapeHtml(ev.event_type)}</code></td>
+            <td>${resBadge} ${ev.failure_reason ? `<small class="muted" style="margin-left:6px;">(${escapeHtml(ev.failure_reason)})</small>` : ''}</td>
+          </tr>
+        `;
+      }).join("");
+
+      if (window.lucide) lucide.createIcons();
+    } catch (err) {
+      console.warn("Failed to load events:", err);
+    } finally {
+      isEventsLoading = false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 7. Modals: Map & Enroll Actions
+  // -------------------------------------------------------------------------
+  function openMapModal(teacherId = null) {
+    const select = $("#map-select-teacher");
+    select.innerHTML = `<option value="">-- Choose Teacher --</option>` +
+      teachersCache.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${escapeHtml(t.teacher_id)})</option>`).join("");
+
+    if (teacherId) {
+      select.value = teacherId;
+      const t = teachersCache.find(x => String(x.id) === String(teacherId));
+      if (t) {
+        $("#map-input-dev-uid").value = t.fingerprint_user_id || t.teacher_id;
+      }
+    } else {
+      $("#map-input-dev-uid").value = "";
+    }
+
+    select.onchange = () => {
+      const chosen = teachersCache.find(x => String(x.id) === String(select.value));
+      if (chosen && !$("#map-input-dev-uid").value) {
+        $("#map-input-dev-uid").value = chosen.fingerprint_user_id || chosen.teacher_id;
+      }
+    };
+
+    $("#map-teacher-modal").classList.add("open");
+    $("#map-teacher-modal").setAttribute("aria-hidden", "false");
+  }
+
+  async function handleSaveMapping() {
+    const tid = $("#map-select-teacher").value;
+    const uid = $("#map-input-dev-uid").value.trim();
+
+    if (!tid || !uid) {
+      alert("Please select a teacher and enter a Device User ID.");
+      return;
+    }
+
+    try {
+      const res = await apiReq("/api/devices/fingerprint/mappings", {
+        method: "POST",
+        body: JSON.stringify({
+          teacher_id: tid,
+          fingerprint_user_id: uid,
+          attendance_method: "FINGERPRINT",
+        }),
+      });
+
+      showToast(res.message || "Mapping saved.", true);
+      $("#map-teacher-modal").classList.remove("open");
+      $("#map-teacher-modal").setAttribute("aria-hidden", "true");
+      loadMappings();
+      loadDeviceStatus();
+    } catch (err) {
+      alert(`Failed to save mapping: ${err.message}`);
+    }
+  }
+
+  function openEnrollModal(teacherId) {
+    const t = teachersCache.find(x => String(x.id) === String(teacherId));
+    if (!t) return;
+    currentEnrollingTeacher = t;
+
+    $("#enroll-teacher-name").textContent = t.name;
+    $("#enroll-teacher-meta").textContent = `Teacher ID: ${t.teacher_id} | Device User ID: ${t.fingerprint_user_id || t.teacher_id}`;
+    
+    const fb = $("#enroll-status-feedback");
+    fb.style.display = "none";
+
+    $("#enroll-modal").classList.add("open");
+    $("#enroll-modal").setAttribute("aria-hidden", "false");
+  }
+
+  async function handleStartEnrollment() {
+    if (!currentEnrollingTeacher) return;
+    const btn = $("#btn-start-enrollment");
+    btn.disabled = true;
+    const origText = btn.innerHTML;
+    btn.innerHTML = `<i data-lucide="loader-2" class="spin"></i> Enrolling on Device...`;
+    if (window.lucide) lucide.createIcons();
+
+    const fb = $("#enroll-status-feedback");
+    fb.style.display = "block";
+    fb.style.background = "rgba(0, 122, 255, 0.08)";
+    fb.style.color = "var(--text-primary)";
+    fb.innerHTML = `Sending enrollment request to the configured adapter...`;
+
+    try {
+      const res = await apiReq("/api/devices/fingerprint/enroll", {
+        method: "POST",
+        body: JSON.stringify({
+          teacher_id: currentEnrollingTeacher.id,
+          device_user_id: currentEnrollingTeacher.fingerprint_user_id || currentEnrollingTeacher.teacher_id,
+        }),
+      });
+
+      const simulated = Boolean(res.simulated);
+      fb.style.background = simulated ? "rgba(217, 119, 6, 0.12)" : "rgba(52, 199, 89, 0.12)";
+      fb.style.border = simulated
+        ? "1px solid rgba(217, 119, 6, 0.3)"
+        : "1px solid rgba(52, 199, 89, 0.3)";
+      const enrollmentLabel = simulated
+        ? "Simulated Enrollment (not device-confirmed)"
+        : "Device Enrollment Confirmed";
+      fb.innerHTML = `<div style="font-weight:700;">${escapeHtml(enrollmentLabel)}</div><div>${escapeHtml(res.message || 'Enrollment request completed.')}</div>`;
+      
+      loadMappings();
+      loadDeviceStatus();
+      loadEvents();
+    } catch (err) {
+      fb.style.background = "rgba(255, 59, 48, 0.1)";
+      fb.style.border = "1px solid rgba(255, 59, 48, 0.3)";
+      fb.innerHTML = `<div style="color:var(--danger); font-weight:700;">✕ Enrollment Failed</div><div>${escapeHtml(err.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+
+  async function handleUnenroll(teacherId) {
+    const t = teachersCache.find(x => String(x.id) === String(teacherId));
+    if (!t) return;
+    if (!confirm(`Remove fingerprint enrollment for ${t.name}?`)) return;
+
+    try {
+      const res = await apiReq(`/api/devices/fingerprint/mappings/${t.id}`, { method: "DELETE" });
+      showToast(res.message || "Enrollment removed.", true);
+      loadMappings();
+      loadDeviceStatus();
+      loadEvents();
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 8. Diagnostics Identity Verification
+  // -------------------------------------------------------------------------
+  async function runVerificationTest() {
+    if (isVerifying) return;
+    const uid = $("#test-verify-uid").value.trim();
+    if (!uid) {
+      alert("Please enter a Device User ID or Teacher ID to test.");
+      return;
+    }
+
+    isVerifying = true;
+    const btn = $("#btn-run-verify-test");
+    btn.disabled = true;
+    const out = $("#test-verify-output");
+    out.style.display = "block";
+    out.style.background = "rgba(0, 122, 255, 0.08)";
+    out.style.color = "var(--text-primary)";
+    out.innerHTML = `<i data-lucide="loader-2" class="spin" style="width:14px;height:14px;"></i> Resolving teacher identity...`;
+    if (window.lucide) lucide.createIcons();
+
+    try {
+      const res = await apiReq("/api/devices/fingerprint/test-verify", {
+        method: "POST",
+        body: JSON.stringify({ device_user_id: uid }),
+      });
+
+      if (res.ok) {
+        out.style.background = "rgba(52, 199, 89, 0.12)";
+        out.style.border = "1px solid rgba(52, 199, 89, 0.3)";
+        out.innerHTML = `
+          <div style="font-weight: 700; color: var(--success); margin-bottom: 4px;">
+            ✓ Recognized Teacher: ${escapeHtml(res.teacher.name)} (${escapeHtml(res.teacher.teacher_id)})
+          </div>
+          <div class="small" style="color: var(--text-secondary);">
+            Department: ${escapeHtml(res.teacher.department || 'General')} | Enrollment: ${res.teacher.fingerprint_enrolled ? 'Enrolled' : 'Not Enrolled'}
+          </div>
+          <div style="margin-top: 4px; font-size: 0.75rem; color: var(--text-tertiary);">
+            🔒 Diagnostic check only. No attendance records created.
+          </div>
+        `;
+      } else {
+        out.style.background = "rgba(255, 59, 48, 0.1)";
+        out.style.border = "1px solid rgba(255, 59, 48, 0.3)";
+        out.innerHTML = `<div style="font-weight: 700; color: var(--danger);">✕ Rejected: ${escapeHtml(res.status)}</div><div class="small">${escapeHtml(res.message)}</div>`;
+      }
+      if (window.lucide) lucide.createIcons();
+    } catch (err) {
+      out.style.background = "rgba(255, 59, 48, 0.1)";
+      out.style.border = "1px solid rgba(255, 59, 48, 0.3)";
+      out.innerHTML = `<div style="color: var(--danger);"><strong>Error:</strong> ${escapeHtml(err.message)}</div>`;
+    } finally {
+      isVerifying = false;
+      btn.disabled = false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 9. Event Polling Management (30s, Pause on Hidden, No Overlapping)
+  // -------------------------------------------------------------------------
+  function startEventPolling() {
+    stopEventPolling();
+    eventPollTimer = setInterval(() => {
+      if (!document.hidden && $("#auto-refresh-events")?.checked) {
+        loadEvents();
+      }
+    }, 30000); // 30 seconds
+  }
+
+  function stopEventPolling() {
+    if (eventPollTimer) {
+      clearInterval(eventPollTimer);
+      eventPollTimer = null;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 10. Initialization
+  // -------------------------------------------------------------------------
+  document.addEventListener("DOMContentLoaded", () => {
+    loadDeviceStatus();
+    loadMappings();
+    loadEvents();
+
+    $("#btn-test-conn")?.addEventListener("click", runConnectionTest);
+    $("#btn-connect-dev")?.addEventListener("click", connectDevice);
+    $("#btn-refresh-status")?.addEventListener("click", () => {
+      loadDeviceStatus();
+      loadEvents();
+    });
+
+    $("#btn-close-conn-test")?.addEventListener("click", () => {
+      $("#conn-test-result-box").style.display = "none";
+    });
+
+    $("#config-form")?.addEventListener("submit", handleSaveConfig);
+    $("#attendance-import-form")?.addEventListener("submit", importAttendanceFile);
+    $("#btn-run-verify-test")?.addEventListener("click", runVerificationTest);
+    
+    let searchTimer;
+    $("#mapping-search-input")?.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadMappings, 250);
+    });
+
+    $("#btn-map-teacher")?.addEventListener("click", () => openMapModal());
+    $("#btn-save-mapping")?.addEventListener("click", handleSaveMapping);
+    $("#btn-start-enrollment")?.addEventListener("click", handleStartEnrollment);
+    $("#btn-refresh-events")?.addEventListener("click", loadEvents);
+
+    $("#auto-refresh-events")?.addEventListener("change", (e) => {
+      if (e.target.checked) {
+        startEventPolling();
+        loadEvents();
+      } else {
+        stopEventPolling();
+      }
+    });
+
+    // Delegated actions
+    $("#mappings-tbody")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const act = btn.getAttribute("data-action");
+      const tid = btn.getAttribute("data-id");
+      if (act === "enroll") openEnrollModal(tid);
+      else if (act === "edit-map") openMapModal(tid);
+      else if (act === "unenroll") handleUnenroll(tid);
+    });
+
+    // Close modals
+    $$("[data-close]").forEach(el => {
+      el.addEventListener("click", () => {
+        const m = el.closest(".modal");
+        if (m) {
+          m.classList.remove("open");
+          m.setAttribute("aria-hidden", "true");
+        }
+      });
+    });
+
+    // Handle visibility change
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        stopEventPolling();
+      } else if ($("#auto-refresh-events")?.checked) {
+        startEventPolling();
+      }
+    });
+
+    window.addEventListener("beforeunload", () => {
+      stopEventPolling();
+    });
+  });
+})();
+</script>
+{% endblock %}

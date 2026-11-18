@@ -246,3 +246,57 @@
 
 #### 30. `payroll_periods`, `payroll_records`, `payroll_attendance_summaries`, `payroll_earnings`, `payroll_deductions`, `payslips`, `hr_audit_logs`
 * Complete immutable payroll calculation engine.
+
+---
+
+### Group E: Fingerprint Biometric Device Models (`database/enterprise_models.py`)
+
+#### 31. `fingerprint_devices`
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | INTEGER | PRIMARY KEY | Unique device configuration ID |
+| `school_id` | INTEGER | FK(`schools.id`), NULLABLE, INDEX | Tenant reference |
+| `device_id` | VARCHAR(60) | NOT NULL, INDEX | Server-configured hardware identifier |
+| `name` | VARCHAR(120) | NOT NULL | Terminal display name |
+| `model` | VARCHAR(80) | NOT NULL | Terminal model / variant |
+| `connection_type` | VARCHAR(30) | NOT NULL, DEFAULT 'TCP_IP' | Configured transport; protocol must be vendor-verified |
+| `ip_address` | VARCHAR(64) | NULLABLE | Terminal IPv4 / host address |
+| `port` | INTEGER | NULLABLE | Vendor-confirmed TCP port; no default assumed |
+| `comm_key` | VARCHAR(64) | NULLABLE, DEFAULT '0' | Terminal communication password / secret key |
+| `webhook_token_hash` | VARCHAR(64) | NULLABLE | SHA-256 hash of normalized webhook bearer secret |
+| `timeout_seconds` | FLOAT | NOT NULL, DEFAULT 5.0 | Socket communication timeout |
+| `serial_number` | VARCHAR(80) | NULLABLE | Terminal hardware serial number |
+| `firmware_version` | VARCHAR(80) | NULLABLE | Terminal firmware revision |
+| `status` | VARCHAR(30) | NOT NULL, DEFAULT 'disconnected' | State ('connected', 'disconnected', 'connecting', 'error') |
+| `last_connected_at` | TIMESTAMPTZ | NULLABLE | Instant of last successful connection |
+| `last_activity_at` | TIMESTAMPTZ | NULLABLE | Instant of last received biometric packet |
+| `last_error` | TEXT | NULLABLE | Last error message or socket failure reason |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Device active state flag |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Record creation timestamp |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Record modification timestamp |
+
+#### 32. `fingerprint_device_audit`
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | INTEGER | PRIMARY KEY | Unique audit entry ID |
+| `school_id` | INTEGER | FK(`schools.id`), NULLABLE, INDEX | Tenant reference |
+| `device_id` | VARCHAR(60) | NOT NULL, DEFAULT 'BIOMAX_INDIGO' | Device identifier |
+| `teacher_id` | VARCHAR(50) | NULLABLE, INDEX | Target Teacher identifier |
+| `event_time` | TIMESTAMPTZ | NOT NULL, INDEX, DEFAULT now() | Event occurrence instant |
+| `event_type` | VARCHAR(30) | NOT NULL | 'verify', 'test_verify', 'enroll', 'delete_enrollment', 'connect', 'config_change' |
+| `result` | VARCHAR(30) | NOT NULL | 'success', 'rejected', 'error', 'failed', 'inserted', 'updated' |
+| `failure_reason` | VARCHAR(255) | NULLABLE | Diagnostic details or rejection reason |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Record creation timestamp |
+
+#### 33. `fingerprint_event_receipts`
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | INTEGER | PRIMARY KEY | Unique receipt ID |
+| `device_id` | VARCHAR(60) | NOT NULL, INDEX | Registered device identifier |
+| `event_key` | VARCHAR(64) | NOT NULL, UNIQUE | Idempotency key derived from normalized event identity |
+| `payload_hash` | VARCHAR(64) | NOT NULL | Hash used to identify conflicting replays |
+| `device_user_id` | VARCHAR(50) | NOT NULL | Explicit mapped device user ID |
+| `event_time` | TIMESTAMPTZ | NOT NULL, INDEX | Normalized event timestamp |
+| `result` | VARCHAR(30) | NOT NULL | Processing result/action |
+| `response_json` | JSON | NULLABLE | Processed response for audit/debug use |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Receipt creation time |

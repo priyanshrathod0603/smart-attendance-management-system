@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - Krishna English School ERP{% endblock %}
+{% block title %}Dashboard - {{ current_school.name if current_school else 'AttendanceOS' }}{% endblock %}
 {% block crumbs %}
   <i data-lucide="home"></i><span>Dashboard</span>
 {% endblock %}
 {% block content %}
 <div class="welcome-banner">
-  <h1>Good Day, Admin! 👋</h1>
-  <p>Here is what's happening at Krishna English School today.</p>
+  <h1>Good Day, {{ current_user.name if current_user and current_user.name else 'Admin' }}! 👋</h1>
+  <p>Here is what's happening at {{ current_school.name if current_school else 'your institution' }} today.</p>
 </div>
 
 <section class="stats" id="stats">

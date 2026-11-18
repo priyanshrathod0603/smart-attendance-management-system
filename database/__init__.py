@@ -1,4 +1,5 @@
 from .db import db
+from .tenant_models import School
 from .models import (
     Attendance,
     Camera,
@@ -21,6 +22,7 @@ from .enterprise_models import (  # noqa: F401
     StudentAttendance, TeacherAttendance, AttendanceEvent, TeacherTimeRule,
     StudentTimeRule, HolidayCalendar, WeeklyOff, AttendanceSetting,
     AttendanceLog, AttendanceCorrection, CameraSession, Notification,
+    FingerprintDeviceAudit, FingerprintDevice,
 )
 from .auth_models import User, AuthSession, AuthToken, OAuthIdentity, LoginEvent  # noqa: F401
 
@@ -28,17 +30,22 @@ from .auth_models import User, AuthSession, AuthToken, OAuthIdentity, LoginEvent
 # metadata so ``db.create_all()`` creates them automatically. This is
 # entirely additive — no existing table is modified.
 from hr.models import (  # noqa: F401
-    Department, Designation, Employee, EmployeeEmploymentHistory,
+    CostCenter, JobLevel, JobGrade, EmploymentType,
+    Department, Team, Designation, Employee, EmployeeEmergencyContact,
+    EmployeeDependent, EmployeeDepartmentHistory, EmployeeDesignationHistory,
+    EmployeeManagerHistory, EmployeeStatusHistory, EmployeePromotion,
+    EmployeeTimelineEvent, EmployeeEmploymentHistory,
     SalaryComponent, EmployeeSalaryStructure, EmployeeSalaryComponent,
     LeaveType, EmployeeLeaveBalance, LeaveRequest,
     Shift, EmployeeShift, OvertimeRecord,
     EmployeeBonus, EmployeeLoan, LoanRepayment, Reimbursement,
     PayrollPeriod, PayrollRecord, PayrollAttendanceSummary,
-    PayrollEarning, PayrollDeduction, Payslip, HRAuditLog,
+    PayrollEarning, PayrollDeduction, Payslip, HRAuditLog, EmployeeDocument,
 )
 
 __all__ = [
     "db",
+    "School",
     "Student",
     "Camera",
     "Attendance",

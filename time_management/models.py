@@ -42,7 +42,8 @@ class AttendanceTimeRule(db.Model):
     __tablename__ = "attendance_time_rules"
 
     id = Column(Integer, primary_key=True)
-    scope = Column(String(20), unique=True, nullable=False, index=True)  # 'teacher' or 'student'
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=True, index=True)
+    scope = Column(String(20), nullable=False, index=True)  # 'teacher' or 'student'
 
     # ---- core time windows ----
     office_start = Column(String(8), default="08:00", nullable=False)
@@ -81,9 +82,12 @@ class AttendanceTimeRule(db.Model):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    school = db.relationship("School")
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "scope": self.scope,
             "office_start": self.office_start,
             "late_grace_time": self.late_grace_time,
@@ -124,6 +128,7 @@ class AttendanceSession(db.Model):
     __tablename__ = "attendance_session"
 
     id = Column(Integer, primary_key=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=True, index=True)
     student_id = Column(
         Integer, ForeignKey("students.id"), nullable=False, index=True
     )
@@ -155,6 +160,8 @@ class AttendanceSession(db.Model):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    school = db.relationship("School")
+
     __table_args__ = (
         UniqueConstraint("student_id", "session_date", name="uq_session_student_date"),
         Index("ix_session_date", "session_date"),
@@ -163,6 +170,7 @@ class AttendanceSession(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "student_id": self.student_id,
             "session_date": self.session_date.isoformat() if self.session_date else None,
             "in_time": self.in_time.isoformat() if self.in_time else None,
@@ -190,6 +198,7 @@ class AttendanceHoliday(db.Model):
     __tablename__ = "attendance_holiday"
 
     id = Column(Integer, primary_key=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=True, index=True)
     scope = Column(String(20), default="all", nullable=False)  # 'teacher' | 'student' | 'all'
     holiday_date = Column(Date, nullable=False, index=True)
     name = Column(String(120), nullable=False)
@@ -198,6 +207,8 @@ class AttendanceHoliday(db.Model):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    school = db.relationship("School")
+
     __table_args__ = (
         UniqueConstraint("holiday_date", "scope", name="uq_holiday_date_scope"),
     )
@@ -205,6 +216,7 @@ class AttendanceHoliday(db.Model):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "scope": self.scope,
             "holiday_date": self.holiday_date.isoformat() if self.holiday_date else None,
             "name": self.name,
@@ -219,6 +231,7 @@ class AttendanceAuditLog(db.Model):
     __tablename__ = "attendance_audit_log"
 
     id = Column(Integer, primary_key=True)
+    school_id = Column(Integer, ForeignKey("schools.id"), nullable=True, index=True)
     entity_type = Column(String(40), nullable=False, index=True)  # 'attendance' | 'session' | 'rule' | 'holiday'
     entity_id = Column(Integer, nullable=False, index=True)
     field = Column(String(60), nullable=False)
@@ -230,9 +243,12 @@ class AttendanceAuditLog(db.Model):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    school = db.relationship("School")
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "school_id": self.school_id,
             "entity_type": self.entity_type,
             "entity_id": self.entity_id,
             "field": self.field,
